@@ -93,3 +93,21 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 Paper following is opt-in and follows at most three unique arXiv papers by default, with a hard CLI limit of ten. A resolved paper can prove only the Research paper component. Its metadata does not prove that a separate technical report, source code, data, or evaluation artifact has been released. DOI and generic PDF links remain discovery candidates but are not fetched by this arXiv-only connector.
+
+Collect a bounded, content-addressed snapshot of a public documentation page:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot collect-doc https://huggingface.co/docs/transformers/model_doc/bert \
+  --output bert-documentation-evidence.json
+```
+
+Follow documentation pages discovered in a Hugging Face model card:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot evaluate google-bert/bert-base-uncased --repository-root .. \
+  --follow-documentation --output bert-documentation-evaluation.json
+```
+
+Documentation following is opt-in and follows at most three unique pages by default, with a hard CLI limit of ten. The connector accepts bounded public HTTP(S) text, Markdown, and HTML, validates redirects, blocks local or non-public literal addresses, strips active HTML content, and identifies the captured revision by its content hash. A retrievable generic page is retained as review evidence but does not automatically satisfy any MOF component.

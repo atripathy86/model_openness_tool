@@ -247,3 +247,38 @@ class PaperCollectionResult(BaseModel):
     error: str | None = None
     snapshot: PaperSnapshot | None = None
     evidence_report: PaperEvidenceReport | None = None
+
+
+class DocumentationSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot_id: str
+    source_url: str
+    final_url: str
+    resolved_revision: str
+    retrieved_at: datetime
+    content_type: str
+    title: str | None = None
+    text: TextArtifact
+    warnings: tuple[str, ...] = ()
+
+
+class DocumentationEvidenceReport(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot: DocumentationSnapshot
+    catalog_version: str
+    catalog_sha256: str
+    detector_version: str
+    evidence: tuple[EvidenceItem, ...]
+    findings: tuple[ComponentFinding, ...]
+
+
+class DocumentationCollectionResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    documentation_url: str
+    access_status: AccessStatus
+    error: str | None = None
+    snapshot: DocumentationSnapshot | None = None
+    evidence_report: DocumentationEvidenceReport | None = None

@@ -14,6 +14,7 @@ from model_openness_tool.evidence import (
     CollectionResult,
     ComponentFinding,
     DatasetCollectionResult,
+    DocumentationCollectionResult,
     EvidenceClaim,
     EvidenceReport,
     GitHubCollectionResult,
@@ -126,6 +127,7 @@ class EvaluationRun(BaseModel):
     linked_github: tuple[GitHubCollectionResult, ...] = ()
     linked_datasets: tuple[DatasetCollectionResult, ...] = ()
     linked_papers: tuple[PaperCollectionResult, ...] = ()
+    linked_documentation: tuple[DocumentationCollectionResult, ...] = ()
     assessment: ProvisionalAssessment | None = None
 
 

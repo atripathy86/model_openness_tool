@@ -13,6 +13,10 @@ from model_openness_tool import __version__
 from model_openness_tool.assessment import EvaluationRun, ProvisionalEvaluator
 from model_openness_tool.catalog import load_catalog
 from model_openness_tool.connectors.arxiv import ArxivApiClient, ArxivConnector
+from model_openness_tool.connectors.documentation import (
+    DocumentationConnector,
+    DocumentationHttpClient,
+)
 from model_openness_tool.connectors.github import GitHubConnector, GitHubRestClient
 from model_openness_tool.connectors.huggingface import HuggingFaceConnector, HuggingFaceSdkClient
 from model_openness_tool.connectors.huggingface_dataset import (
@@ -24,6 +28,8 @@ from model_openness_tool.evidence import (
     CollectionResult,
     DatasetCollectionResult,
     DatasetEvidenceReport,
+    DocumentationCollectionResult,
+    DocumentationEvidenceReport,
     GitHubCollectionResult,
     GitHubEvidenceReport,
     LinkedSourceType,
@@ -172,6 +178,24 @@ def collect_paper(
         raise typer.Exit(code=2)
 
 
+@app.command("collect-doc")
+def collect_documentation(
+    documentation_url: Annotated[
+        str,
+        typer.Argument(help="Public HTTP(S) documentation page URL."),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
+    ] = None,
+) -> None:
+    """Collect a bounded, content-addressed documentation snapshot."""
+    result = DocumentationConnector(DocumentationHttpClient()).collect(documentation_url)
+    _emit_json(result, output)
+    if result.access_status != AccessStatus.AVAILABLE:
+        raise typer.Exit(code=2)
+
+
 @app.command("assess")
 def assess_evidence(
     evidence_file: Annotated[
@@ -295,12 +319,29 @@ def evaluate_model(
             help="Maximum linked arXiv papers to collect.",
         ),
     ] = 3,
+    follow_documentation: Annotated[
+        bool,
+        typer.Option(
+            "--follow-documentation/--no-follow-documentation",
+            help="Collect bounded documentation pages linked by the model card.",
+        ),
+    ] = False,
+    max_linked_documentation: Annotated[
+        int,
+        typer.Option(
+            "--max-linked-documentation",
+            min=0,
+            max=10,
+            help="Maximum linked documentation pages to collect.",
+        ),
+    ] = 3,
 ) -> None:
     """Collect evidence and emit a conservative provisional MOF assessment."""
     collection = _connector(cache_dir, os.environ.get(token_env)).collect(model_id, revision)
     linked_github: tuple[GitHubCollectionResult, ...] = ()
     linked_datasets: tuple[DatasetCollectionResult, ...] = ()
     linked_papers: tuple[PaperCollectionResult, ...] = ()
+    linked_documentation: tuple[DocumentationCollectionResult, ...] = ()
     assessment = None
     if collection.report is not None:
         assessment_report = collection.report
@@ -317,7 +358,10 @@ def evaluate_model(
                 github_connector.collect(source.canonical_url) for source in github_sources
             )
             linked_reports: list[
-                GitHubEvidenceReport | DatasetEvidenceReport | PaperEvidenceReport
+                GitHubEvidenceReport
+                | DatasetEvidenceReport
+                | PaperEvidenceReport
+                | DocumentationEvidenceReport
             ] = []
             for linked_result in linked_github:
                 if linked_result.evidence_report is not None:
@@ -354,6 +398,20 @@ def evaluate_model(
             for paper_result in linked_papers:
                 if paper_result.evidence_report is not None:
                     linked_reports.append(paper_result.evidence_report)
+        if follow_documentation:
+            documentation_connector = DocumentationConnector(DocumentationHttpClient())
+            documentation_sources = [
+                source
+                for source in collection.report.linked_sources
+                if source.source_type == LinkedSourceType.DOCUMENTATION
+            ][:max_linked_documentation]
+            linked_documentation = tuple(
+                documentation_connector.collect(source.canonical_url)
+                for source in documentation_sources
+            )
+            for documentation_result in linked_documentation:
+                if documentation_result.evidence_report is not None:
+                    linked_reports.append(documentation_result.evidence_report)
         assessment_report = merge_evidence_reports(
             assessment_report,
             tuple(linked_reports),
@@ -367,6 +425,7 @@ def evaluate_model(
         linked_github=linked_github,
         linked_datasets=linked_datasets,
         linked_papers=linked_papers,
+        linked_documentation=linked_documentation,
         assessment=assessment,
     )
     _emit_json(run, output)

@@ -40,6 +40,45 @@ def test_catalog_command() -> None:
     assert len(payload["components"]) == 17
 
 
+def test_collect_pdf_command_writes_neutral_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = "https://example.com/report.pdf"
+
+    class FakePage:
+        def extract_text(self) -> str:
+            return "Example PDF report"
+
+    class FakeReader:
+        def __init__(self, _source: object, strict: bool) -> None:
+            assert strict is False
+            self.pages = [FakePage()]
+
+    class FakePdfClient:
+        def fetch(self, requested_url: str, max_bytes: int) -> DocumentResponse:
+            assert requested_url == url
+            assert max_bytes == 10_000_000
+            return DocumentResponse(
+                status_code=200,
+                content_type="application/pdf",
+                content=b"%PDF mocked",
+            )
+
+    monkeypatch.setattr(cli, "DocumentationHttpClient", FakePdfClient)
+    monkeypatch.setattr("model_openness_tool.connectors.pdf.PdfReader", FakeReader)
+    output = tmp_path / "pdf.json"
+
+    result = runner.invoke(cli.app, ["collect-pdf", url, "--output", str(output)])
+
+    assert result.exit_code == 0
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["access_status"] == "available"
+    assert payload["snapshot"]["page_count"] == 1
+    assert all(
+        finding["availability"] == "unknown" for finding in payload["evidence_report"]["findings"]
+    )
+
+
 def test_evaluate_yaml_command(repository_root: Path) -> None:
     fixture = (
         repository_root / "Test_Data/Class3TTestFile_C1_33%-C2_60%-C3_100%_6C_1G_6L_6V_0I_6T.yml"

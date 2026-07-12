@@ -108,7 +108,18 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
   --follow-papers --output bert-paper-evaluation.json
 ```
 
-Paper following is opt-in and follows at most three unique arXiv or DOI papers by default, with a hard CLI limit of ten. A resolved paper can prove only the Research paper component. Its metadata does not prove that a separate technical report, source code, data, or evaluation artifact has been released. Generic PDF links remain discovery candidates but are not fetched by the metadata-only paper connectors.
+Paper following is opt-in and follows at most three unique arXiv, DOI, or generic PDF sources by default, with a hard CLI limit of ten. A resolved arXiv or DOI paper can prove only the Research paper component. Its metadata does not prove that a separate technical report, source code, data, or evaluation artifact has been released. A generic PDF is retained as neutral review evidence and does not automatically satisfy any MOF component.
+
+Collect bounded, content-addressed text from a public PDF:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot collect-pdf \
+  https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf \
+  --output dummy-pdf-evidence.json
+```
+
+PDF collection accepts at most 10 MB, extracts at most the first 100 pages and 500,000 characters, validates redirects, and blocks local or non-public literal addresses. Image-only PDFs without extractable text require a later OCR workflow.
 
 Collect a bounded, content-addressed snapshot of a public documentation page:
 

@@ -24,6 +24,7 @@ from model_openness_tool.connectors.huggingface_dataset import (
     HuggingFaceDatasetConnector,
     HuggingFaceDatasetSdkClient,
 )
+from model_openness_tool.connectors.pdf import PdfConnector
 from model_openness_tool.evidence import (
     AccessStatus,
     CollectionResult,
@@ -36,6 +37,8 @@ from model_openness_tool.evidence import (
     LinkedSourceType,
     PaperCollectionResult,
     PaperEvidenceReport,
+    PdfCollectionResult,
+    PdfEvidenceReport,
 )
 from model_openness_tool.licenses import LicenseRegistry
 from model_openness_tool.model_yaml import load_model_yaml
@@ -177,8 +180,26 @@ def collect_paper(
         typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
     ] = None,
 ) -> None:
-    """Collect bounded paper metadata without downloading the PDF."""
+    """Collect bounded paper metadata or a content-addressed generic PDF."""
     result = _collect_paper(paper)
+    _emit_json(result, output)
+    if result.access_status != AccessStatus.AVAILABLE:
+        raise typer.Exit(code=2)
+
+
+@app.command("collect-pdf")
+def collect_pdf(
+    pdf_url: Annotated[
+        str,
+        typer.Argument(help="Public HTTP(S) PDF URL."),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
+    ] = None,
+) -> None:
+    """Collect bounded, content-addressed text from a public PDF."""
+    result = PdfConnector(DocumentationHttpClient()).collect(pdf_url)
     _emit_json(result, output)
     if result.access_status != AccessStatus.AVAILABLE:
         raise typer.Exit(code=2)
@@ -346,7 +367,7 @@ def evaluate_model(
     collection = _connector(cache_dir, os.environ.get(token_env)).collect(model_id, revision)
     linked_github: tuple[GitHubCollectionResult, ...] = ()
     linked_datasets: tuple[DatasetCollectionResult, ...] = ()
-    linked_papers: tuple[PaperCollectionResult, ...] = ()
+    linked_papers: tuple[PaperCollectionResult | PdfCollectionResult, ...] = ()
     linked_documentation: tuple[DocumentationCollectionResult, ...] = ()
     assessment = None
     if collection.report is not None:
@@ -367,6 +388,7 @@ def evaluate_model(
                 GitHubEvidenceReport
                 | DatasetEvidenceReport
                 | PaperEvidenceReport
+                | PdfEvidenceReport
                 | DocumentationEvidenceReport
             ] = []
             for linked_result in linked_github:
@@ -395,7 +417,11 @@ def evaluate_model(
                 source
                 for source in collection.report.linked_sources
                 if source.source_type == LinkedSourceType.PAPER
-                and (source.identifier.startswith("arxiv:") or source.identifier.startswith("doi:"))
+                and (
+                    source.identifier.startswith("arxiv:")
+                    or source.identifier.startswith("doi:")
+                    or source.canonical_url.casefold().split("?", 1)[0].endswith(".pdf")
+                )
             ][:max_linked_papers]
             linked_papers = tuple(_collect_paper(source.canonical_url) for source in paper_sources)
             for paper_result in linked_papers:
@@ -478,10 +504,14 @@ def _connector(cache_dir: Path, token: str | None) -> HuggingFaceConnector:
     return HuggingFaceConnector(HuggingFaceSdkClient(token=token), cache_dir=cache_dir)
 
 
-def _collect_paper(paper: str) -> PaperCollectionResult:
+def _collect_paper(paper: str) -> PaperCollectionResult | PdfCollectionResult:
     normalized = paper.strip().casefold()
     if normalized.startswith(("doi:", "10.")) or "doi.org/" in normalized:
         return DoiConnector(CrossrefClient()).collect(paper)
+    if normalized.startswith(("http://", "https://")) and normalized.split("?", 1)[0].endswith(
+        ".pdf"
+    ):
+        return PdfConnector(DocumentationHttpClient()).collect(paper)
     return ArxivConnector(ArxivApiClient()).collect(paper)
 
 

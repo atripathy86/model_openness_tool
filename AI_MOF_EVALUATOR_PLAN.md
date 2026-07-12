@@ -656,5 +656,6 @@ As of 2026-07-12:
 - Released data-file and data-card evidence is merged conservatively. Dataset license declarations apply specifically to the dataset component, and conflicting declarations remain ambiguous and review-required.
 - `mot collect-paper` now resolves arXiv references to version-pinned, bounded Atom metadata and DOI references to content-addressed Crossref metadata without downloading PDFs. `mot evaluate --follow-papers` can merge resolved papers as Research paper evidence only.
 - `mot collect-doc` now captures bounded public text/HTML documentation as content-addressed review evidence. `mot evaluate --follow-documentation` follows normalized documentation links without automatically promoting any MOF component.
-- Generic PDF collection, semantic documentation extraction, and source-license text extraction are the next Phase 3 slices.
+- `mot collect-pdf` now captures bounded, content-addressed text from public generic PDFs. Opt-in paper following can retain generic PDFs as neutral review evidence without automatically promoting a MOF component.
+- Semantic documentation extraction, source-license text extraction, and OCR/visual PDF evidence are the next Phase 3 slices.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

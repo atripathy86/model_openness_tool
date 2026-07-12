@@ -20,6 +20,7 @@ from model_openness_tool.evidence import (
     GitHubEvidenceReport,
     GitHubSnapshot,
     PaperEvidenceReport,
+    PdfEvidenceReport,
 )
 
 GITHUB_DETECTOR_VERSION = "github-manifest-v2"
@@ -135,6 +136,7 @@ def merge_evidence_reports(
         GitHubEvidenceReport
         | DatasetEvidenceReport
         | PaperEvidenceReport
+        | PdfEvidenceReport
         | DocumentationEvidenceReport,
         ...,
     ],

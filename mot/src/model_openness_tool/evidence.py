@@ -283,3 +283,39 @@ class DocumentationCollectionResult(BaseModel):
     error: str | None = None
     snapshot: DocumentationSnapshot | None = None
     evidence_report: DocumentationEvidenceReport | None = None
+
+
+class PdfSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot_id: str
+    source_url: str
+    final_url: str
+    resolved_revision: str
+    retrieved_at: datetime
+    content_type: str
+    page_count: int = Field(ge=1)
+    extracted_page_count: int = Field(ge=0)
+    text: TextArtifact
+    warnings: tuple[str, ...] = ()
+
+
+class PdfEvidenceReport(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot: PdfSnapshot
+    catalog_version: str
+    catalog_sha256: str
+    detector_version: str
+    evidence: tuple[EvidenceItem, ...]
+    findings: tuple[ComponentFinding, ...]
+
+
+class PdfCollectionResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    pdf_url: str
+    access_status: AccessStatus
+    error: str | None = None
+    snapshot: PdfSnapshot | None = None
+    evidence_report: PdfEvidenceReport | None = None

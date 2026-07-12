@@ -19,6 +19,7 @@ from model_openness_tool.evidence import (
     EvidenceReport,
     GitHubCollectionResult,
     PaperCollectionResult,
+    PdfCollectionResult,
 )
 from model_openness_tool.licenses import LicenseRegistry
 from model_openness_tool.scoring import ModelEvaluator
@@ -126,7 +127,7 @@ class EvaluationRun(BaseModel):
     collection: CollectionResult
     linked_github: tuple[GitHubCollectionResult, ...] = ()
     linked_datasets: tuple[DatasetCollectionResult, ...] = ()
-    linked_papers: tuple[PaperCollectionResult, ...] = ()
+    linked_papers: tuple[PaperCollectionResult | PdfCollectionResult, ...] = ()
     linked_documentation: tuple[DocumentationCollectionResult, ...] = ()
     assessment: ProvisionalAssessment | None = None
 

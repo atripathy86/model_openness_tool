@@ -23,6 +23,7 @@ models/.processed
 /mot/.venv/
 /mot/.uv-cache/
 /mot/.uv-python/
+/mot/.hf-cache/
 /mot/.pytest_cache/
 /mot/.ruff_cache/
 /mot/.mypy_cache/

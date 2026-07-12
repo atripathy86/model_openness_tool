@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -9,6 +10,8 @@ import typer
 
 from model_openness_tool import __version__
 from model_openness_tool.catalog import load_catalog
+from model_openness_tool.connectors.huggingface import HuggingFaceConnector, HuggingFaceSdkClient
+from model_openness_tool.evidence import AccessStatus
 from model_openness_tool.licenses import LicenseRegistry
 from model_openness_tool.model_yaml import load_model_yaml
 from model_openness_tool.scoring import ModelEvaluator
@@ -31,6 +34,50 @@ def show_catalog() -> None:
     """Print the active component catalog as JSON."""
     catalog = load_catalog()
     typer.echo(catalog.model_dump_json(indent=2, by_alias=True))
+
+
+@app.command("collect")
+def collect_model(
+    model_id: Annotated[str, typer.Argument(help="Hugging Face model ID, such as org/model.")],
+    revision: Annotated[
+        str | None,
+        typer.Option("--revision", help="Branch, tag, or commit to resolve and pin."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
+    ] = None,
+    cache_dir: Annotated[
+        Path,
+        typer.Option(
+            "--cache-dir",
+            file_okay=False,
+            help="Local Hugging Face cache; model weights are not downloaded.",
+        ),
+    ] = Path(".hf-cache"),
+    token_env: Annotated[
+        str,
+        typer.Option(
+            "--token-env",
+            help="Environment variable containing a Hugging Face token.",
+        ),
+    ] = "HF_TOKEN",
+) -> None:
+    """Collect a revision-pinned Hugging Face evidence snapshot."""
+    token = os.environ.get(token_env)
+    connector = HuggingFaceConnector(
+        HuggingFaceSdkClient(token=token),
+        cache_dir=cache_dir,
+    )
+    result = connector.collect(model_id, revision)
+    serialized = result.model_dump_json(indent=2)
+    if output is None:
+        typer.echo(serialized)
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(f"{serialized}\n", encoding="utf-8")
+    if result.access_status != AccessStatus.AVAILABLE:
+        raise typer.Exit(code=2)
 
 
 @app.command("evaluate-yaml")

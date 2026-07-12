@@ -637,3 +637,15 @@ The following choices should be reviewed before implementation commits that depe
 ## 21. Git and delivery policy
 
 Development occurs on the `atripathy86/model_openness_tool` fork using the `fork` remote. The LFAI repository remains `origin` for upstream synchronization. No commits are created without explicit user approval, and no push is performed unless explicitly requested. Commit author/committer identity is `atripathy86 <atripathy86@gmail.com>`, with DCO sign-off as required by `CONTRIBUTING.md`.
+
+## 22. Implementation status
+
+As of 2026-07-12:
+
+- Phase 0 baseline decisions and Phase 1 scoring foundation are implemented.
+- The uv-managed `model-openness-tool` distribution exposes the `mot` CLI.
+- The Python scorer matches the current named Drupal `Test_Data` progress fixtures.
+- Phase 2 is in progress: revision-pinned Hugging Face metadata/tree/model-card collection and conservative repository evidence detection are implemented behind `mot collect`.
+- The live smoke test downloads only the bounded model card; weight presence is established from repository/LFS metadata.
+- Provisional assessment mapping, additional bounded config/license content, and broader fixture coverage remain before Phase 2 exit.
+- The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

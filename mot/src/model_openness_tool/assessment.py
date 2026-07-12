@@ -15,6 +15,7 @@ from model_openness_tool.evidence import (
     ComponentFinding,
     EvidenceClaim,
     EvidenceReport,
+    GitHubCollectionResult,
 )
 from model_openness_tool.licenses import LicenseRegistry
 from model_openness_tool.scoring import ModelEvaluator
@@ -119,6 +120,7 @@ class EvaluationRun(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     collection: CollectionResult
+    linked_github: tuple[GitHubCollectionResult, ...] = ()
     assessment: ProvisionalAssessment | None = None
 
 

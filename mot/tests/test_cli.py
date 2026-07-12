@@ -6,6 +6,11 @@ import pytest
 from typer.testing import CliRunner
 
 from model_openness_tool import cli
+from model_openness_tool.connectors.github import (
+    GitHubRepositoryMetadata,
+    GitHubTree,
+    GitHubTreeEntry,
+)
 from model_openness_tool.connectors.huggingface import HubFileMetadata, HubModelMetadata
 
 runner = CliRunner()
@@ -48,7 +53,10 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
     repository_root: Path,
 ) -> None:
     card = tmp_path / "README.md"
-    card.write_text("# Example", encoding="utf-8")
+    card.write_text(
+        "# Example\n\nSource: https://github.com/example/model",
+        encoding="utf-8",
+    )
     captured_token: list[str | None] = []
 
     class FakeSdkClient:
@@ -78,7 +86,29 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
         ) -> Path:
             return card
 
+    class FakeGitHubClient:
+        def __init__(self, token: str | None = None) -> None:
+            assert token == "github-secret"
+
+        def get_repository(self, owner: str, repository: str) -> GitHubRepositoryMetadata:
+            return GitHubRepositoryMetadata(
+                identifier=f"{owner}/{repository}",
+                default_branch="main",
+                private=False,
+                archived=False,
+            )
+
+        def resolve_commit(self, owner: str, repository: str, revision: str) -> str:
+            return "b" * 40
+
+        def get_tree(self, owner: str, repository: str, revision: str) -> GitHubTree:
+            return GitHubTree(
+                entries=(GitHubTreeEntry("train.py", 10, "train"),),
+                truncated=False,
+            )
+
     monkeypatch.setattr(cli, "HuggingFaceSdkClient", FakeSdkClient)
+    monkeypatch.setattr(cli, "GitHubRestClient", FakeGitHubClient)
     output = tmp_path / "result.json"
     result = runner.invoke(
         cli.app,
@@ -134,11 +164,19 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
             str(tmp_path / "cache"),
             "--output",
             str(evaluation_output),
+            "--follow-github",
+            "--github-token-env",
+            "TEST_GITHUB_TOKEN",
         ],
-        env={"TEST_HF_TOKEN": "secret-token"},
+        env={
+            "TEST_HF_TOKEN": "secret-token",
+            "TEST_GITHUB_TOKEN": "github-secret",
+        },
     )
     assert evaluate_result.exit_code == 0
     assert captured_token == ["secret-token", "secret-token"]
     evaluation = json.loads(evaluation_output.read_text(encoding="utf-8"))
     assert evaluation["collection"]["access_status"] == "available"
+    assert len(evaluation["linked_github"]) == 1
+    assert evaluation["linked_github"][0]["snapshot"]["resolved_revision"] == "b" * 40
     assert evaluation["assessment"]["kind"] == "provisional"

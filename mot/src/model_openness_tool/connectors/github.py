@@ -11,6 +11,8 @@ from urllib.parse import quote
 
 import httpx
 
+from model_openness_tool.catalog import load_catalog
+from model_openness_tool.domain import FrameworkCatalog
 from model_openness_tool.evidence import (
     AccessStatus,
     GitHubCollectionResult,
@@ -18,6 +20,7 @@ from model_openness_tool.evidence import (
     RepositoryFile,
 )
 from model_openness_tool.links import normalize_github_repository
+from model_openness_tool.source_detectors import detect_github_evidence
 
 
 @dataclass(frozen=True)
@@ -167,10 +170,12 @@ class GitHubConnector:
         client: GitHubClient,
         *,
         max_files: int = 100_000,
+        catalog: FrameworkCatalog | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client
         self._max_files = max_files
+        self._catalog = catalog or load_catalog()
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def collect(self, repository_url: str, revision: str | None = None) -> GitHubCollectionResult:
@@ -194,21 +199,23 @@ class GitHubConnector:
                 )
             files = self._files(tree.entries)
             snapshot_id = sha256(f"github:{metadata.identifier}:{resolved}".encode()).hexdigest()
+            snapshot = GitHubSnapshot(
+                snapshot_id=snapshot_id,
+                repository=metadata.identifier,
+                source_url=f"https://github.com/{metadata.identifier}/tree/{resolved}",
+                requested_revision=revision,
+                resolved_revision=resolved,
+                default_branch=metadata.default_branch,
+                retrieved_at=self._clock(),
+                private=metadata.private,
+                archived=metadata.archived,
+                files=files,
+            )
             return GitHubCollectionResult(
                 repository_url=source.canonical_url,
                 access_status=AccessStatus.AVAILABLE,
-                snapshot=GitHubSnapshot(
-                    snapshot_id=snapshot_id,
-                    repository=metadata.identifier,
-                    source_url=f"https://github.com/{metadata.identifier}/tree/{resolved}",
-                    requested_revision=revision,
-                    resolved_revision=resolved,
-                    default_branch=metadata.default_branch,
-                    retrieved_at=self._clock(),
-                    private=metadata.private,
-                    archived=metadata.archived,
-                    files=files,
-                ),
+                snapshot=snapshot,
+                evidence_report=detect_github_evidence(snapshot, self._catalog),
             )
         except GitHubSourceError as error:
             return GitHubCollectionResult(

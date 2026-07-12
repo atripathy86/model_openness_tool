@@ -47,3 +47,13 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 Use `GITHUB_TOKEN` for private repositories or higher API limits, or select another environment variable with `--token-env`. Tokens are never accepted as CLI values or written to reports.
+
+To follow up to three discovered GitHub repositories and merge their pinned source evidence into the provisional assessment:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot evaluate openai-community/gpt2 --repository-root .. \
+  --follow-github --output gpt2-linked-evaluation.json
+```
+
+GitHub following is opt-in. Deterministic source rules detect explicit architecture, training, inference, evaluation, preprocessing, and dependency filenames while excluding test directories. Linked evidence can raise only the evidence-supported potential score; license scope still requires review before any verified classification.

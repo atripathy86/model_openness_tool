@@ -650,5 +650,6 @@ As of 2026-07-12:
 - Confirmed and evidence-supported potential scores are reported separately, with model-level license scope held for review.
 - The legacy `tools-py/model_scraper.py` draft-YAML workflow is documented as non-authoritative; new evaluator work uses the uv-managed `mot/` package.
 - Phase 3 is in progress: model-card links are normalized into source identities, and `mot collect-github` produces commit-pinned, metadata-only GitHub tree snapshots without cloning or executing code.
-- Source-repository component detectors and evidence merging are the next Phase 3 slice; dataset, paper, and documentation connectors follow.
+- Pinned GitHub manifests now provide conservative source-component evidence, and `mot evaluate --follow-github` can merge up to three linked repositories into the evidence-supported potential assessment.
+- Dataset, paper, and documentation connectors plus deeper source-license scope are the next Phase 3 slices.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

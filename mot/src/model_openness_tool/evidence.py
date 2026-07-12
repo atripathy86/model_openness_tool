@@ -150,6 +150,17 @@ class GitHubSnapshot(BaseModel):
     warnings: tuple[str, ...] = ()
 
 
+class GitHubEvidenceReport(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot: GitHubSnapshot
+    catalog_version: str
+    catalog_sha256: str
+    detector_version: str
+    evidence: tuple[EvidenceItem, ...]
+    findings: tuple[ComponentFinding, ...]
+
+
 class GitHubCollectionResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -157,3 +168,4 @@ class GitHubCollectionResult(BaseModel):
     access_status: AccessStatus
     error: str | None = None
     snapshot: GitHubSnapshot | None = None
+    evidence_report: GitHubEvidenceReport | None = None

@@ -14,10 +14,17 @@ from model_openness_tool.assessment import EvaluationRun, ProvisionalEvaluator
 from model_openness_tool.catalog import load_catalog
 from model_openness_tool.connectors.github import GitHubConnector, GitHubRestClient
 from model_openness_tool.connectors.huggingface import HuggingFaceConnector, HuggingFaceSdkClient
-from model_openness_tool.evidence import AccessStatus, CollectionResult
+from model_openness_tool.evidence import (
+    AccessStatus,
+    CollectionResult,
+    GitHubCollectionResult,
+    GitHubEvidenceReport,
+    LinkedSourceType,
+)
 from model_openness_tool.licenses import LicenseRegistry
 from model_openness_tool.model_yaml import load_model_yaml
 from model_openness_tool.scoring import ModelEvaluator
+from model_openness_tool.source_detectors import merge_evidence_reports
 
 app = typer.Typer(
     name="mot",
@@ -170,16 +177,65 @@ def evaluate_model(
             resolve_path=True,
         ),
     ] = None,
+    follow_github: Annotated[
+        bool,
+        typer.Option(
+            "--follow-github/--no-follow-github",
+            help="Collect and merge pinned GitHub repositories linked by the model card.",
+        ),
+    ] = False,
+    github_token_env: Annotated[
+        str,
+        typer.Option(
+            "--github-token-env",
+            help="Environment variable containing a GitHub token.",
+        ),
+    ] = "GITHUB_TOKEN",
+    max_linked_github: Annotated[
+        int,
+        typer.Option(
+            "--max-linked-github",
+            min=0,
+            max=10,
+            help="Maximum linked GitHub repositories to collect.",
+        ),
+    ] = 3,
 ) -> None:
     """Collect evidence and emit a conservative provisional MOF assessment."""
     collection = _connector(cache_dir, os.environ.get(token_env)).collect(model_id, revision)
+    linked_github: tuple[GitHubCollectionResult, ...] = ()
     assessment = None
     if collection.report is not None:
+        assessment_report = collection.report
+        if follow_github:
+            github_connector = GitHubConnector(
+                GitHubRestClient(token=os.environ.get(github_token_env))
+            )
+            github_sources = [
+                source
+                for source in collection.report.linked_sources
+                if source.source_type == LinkedSourceType.GITHUB_REPOSITORY
+            ][:max_linked_github]
+            linked_github = tuple(
+                github_connector.collect(source.canonical_url) for source in github_sources
+            )
+            linked_reports: list[GitHubEvidenceReport] = []
+            for linked_result in linked_github:
+                if linked_result.evidence_report is not None:
+                    linked_reports.append(linked_result.evidence_report)
+            assessment_report = merge_evidence_reports(
+                assessment_report,
+                tuple(linked_reports),
+            )
         root = repository_root or find_repository_root()
         assessment = ProvisionalEvaluator(load_catalog(), _license_registry(root)).assess(
-            collection.report
+            assessment_report
         )
-    run = EvaluationRun(collection=collection, assessment=assessment)
+    run = EvaluationRun(
+        collection=collection,
+        linked_github=linked_github,
+        assessment=assessment,
+    )
     _emit_json(run, output)
     if collection.access_status != AccessStatus.AVAILABLE:
         raise typer.Exit(code=2)

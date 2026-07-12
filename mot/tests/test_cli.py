@@ -90,6 +90,78 @@ def test_collect_pdf_command_writes_neutral_evidence(
     )
 
 
+def test_extract_llm_command_writes_review_proposals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from model_openness_tool.evidence import (
+        AccessStatus,
+        DocumentationCollectionResult,
+        DocumentationSnapshot,
+        TextArtifact,
+    )
+    from model_openness_tool.llm_extraction import ProviderResponse
+
+    evidence_file = tmp_path / "documentation.json"
+    collection = DocumentationCollectionResult(
+        documentation_url="https://docs.example.com/model",
+        access_status=AccessStatus.AVAILABLE,
+        snapshot=DocumentationSnapshot(
+            snapshot_id="snapshot",
+            source_url="https://docs.example.com/model",
+            final_url="https://docs.example.com/model",
+            resolved_revision="sha256:source",
+            retrieved_at=datetime(2026, 7, 12, tzinfo=UTC),
+            content_type="text/plain",
+            text=TextArtifact(
+                path="https://docs.example.com/model",
+                content_sha256="content",
+                content="The training code is published separately.",
+            ),
+        ),
+    )
+    evidence_file.write_text(collection.model_dump_json(), encoding="utf-8")
+
+    class FakeOpenAiClient:
+        def __init__(self, *, base_url: str, api_key: str | None, model: str | None) -> None:
+            assert base_url == "http://127.0.0.1:1234/v1"
+            assert api_key is None
+            assert model is None
+
+        def extract(self, *, system_prompt: str, user_prompt: str) -> ProviderResponse:
+            assert "training code" in user_prompt
+            return ProviderResponse(
+                model="local-model",
+                content=json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "component_id": 7,
+                                "source_quote": "The training code is published separately.",
+                                "source_line_start": 1,
+                                "source_line_end": 1,
+                                "rationale": "Explicit claim.",
+                                "confidence": 0.9,
+                            }
+                        ]
+                    }
+                ),
+            )
+
+    monkeypatch.setattr(cli, "OpenAiCompatibleClient", FakeOpenAiClient)
+    output = tmp_path / "llm.json"
+    result = runner.invoke(
+        cli.app,
+        ["extract-llm", str(evidence_file), "--output", str(output)],
+        env={"OPENAI_BASE_URL": "http://127.0.0.1:1234/v1"},
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["status"] == "success"
+    assert payload["report"]["review_required"] is True
+    assert payload["report"]["evidence"][0]["claim"] == "artifact_mentioned"
+
+
 def test_evaluate_yaml_command(repository_root: Path) -> None:
     fixture = (
         repository_root / "Test_Data/Class3TTestFile_C1_33%-C2_60%-C3_100%_6C_1G_6L_6V_0I_6T.yml"

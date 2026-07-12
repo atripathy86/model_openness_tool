@@ -163,3 +163,13 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 Documentation and PDF text can emit line-cited `artifact_mentioned` evidence for explicit phrases such as training code, preprocessing pipeline, training dataset, checkpoints, and evaluation results. These findings remain `mentioned_only`: they do not prove that an artifact is released, do not enter the potential score, and cannot satisfy a MOF component.
+
+Request schema-validated LLM evidence proposals from an OpenAI-compatible endpoint:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot extract-llm transformers-training-documentation-evidence.json \
+  --output transformers-training-llm-proposals.json
+```
+
+Set `OPENAI_BASE_URL` for the OpenAI-compatible endpoint and, when authentication is required, set `OPENAI_API_KEY`. The key is optional for unauthenticated local endpoints and is never persisted. `--base-url` can override the environment at runtime without placing a deployment value in project documentation. If `--model` is omitted, MOT discovers the first model reported by the endpoint. Provider output must pass the extraction schema and exact line-citation validation. Accepted proposals are recorded only as review-required `artifact_mentioned` evidence; rejected citations remain visible in the report, and no LLM proposal directly affects a MOF score.

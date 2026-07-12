@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from model_openness_tool import __version__
 from model_openness_tool.assessment import EvaluationRun, ProvisionalEvaluator
@@ -41,6 +41,11 @@ from model_openness_tool.evidence import (
     PdfEvidenceReport,
 )
 from model_openness_tool.licenses import LicenseRegistry
+from model_openness_tool.llm_extraction import (
+    ExtractionStatus,
+    LlmEvidenceExtractor,
+    OpenAiCompatibleClient,
+)
 from model_openness_tool.model_yaml import load_model_yaml
 from model_openness_tool.scoring import ModelEvaluator
 from model_openness_tool.source_detectors import merge_evidence_reports
@@ -243,6 +248,54 @@ def collect_documentation(
     result = DocumentationConnector(DocumentationHttpClient()).collect(documentation_url)
     _emit_json(result, output)
     if result.access_status != AccessStatus.AVAILABLE:
+        raise typer.Exit(code=2)
+
+
+@app.command("extract-llm")
+def extract_llm(
+    evidence_file: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option(
+            "--base-url",
+            help="OpenAI-compatible API base URL; defaults to OPENAI_BASE_URL.",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model ID; discover the first endpoint model if omitted."),
+    ] = None,
+) -> None:
+    """Extract schema-validated, citation-checked LLM review proposals."""
+    resolved_base_url = base_url or os.environ.get("OPENAI_BASE_URL")
+    if resolved_base_url is None:
+        raise typer.BadParameter("Set OPENAI_BASE_URL or pass --base-url")
+    api_key = os.environ.get("OPENAI_API_KEY")
+    try:
+        collection: DocumentationCollectionResult | PdfCollectionResult = TypeAdapter(
+            DocumentationCollectionResult | PdfCollectionResult
+        ).validate_json(evidence_file.read_text(encoding="utf-8"))
+    except (OSError, ValidationError) as error:
+        raise typer.BadParameter(f"Invalid document evidence report: {error}") from error
+    if collection.snapshot is None:
+        raise typer.BadParameter("Evidence report does not contain a collected document snapshot")
+    result = LlmEvidenceExtractor(
+        OpenAiCompatibleClient(base_url=resolved_base_url, api_key=api_key, model=model),
+        load_catalog(),
+    ).extract(
+        collection.snapshot.text,
+        source_url=collection.snapshot.final_url,
+        source_revision=collection.snapshot.resolved_revision,
+    )
+    _emit_json(result, output)
+    if result.status == ExtractionStatus.ERROR:
         raise typer.Exit(code=2)
 
 

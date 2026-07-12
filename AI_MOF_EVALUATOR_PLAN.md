@@ -659,5 +659,6 @@ As of 2026-07-12:
 - `mot collect-pdf` now prefers an injected MinerU remote HTTP-client backend to capture bounded, content-addressed Markdown and structured page evidence from public generic PDFs. When MinerU is unavailable, an explicit `pypdf-fallback` preserves lower-fidelity evidence and the failure warning. Generic PDFs remain neutral evidence.
 - Pinned GitHub collection now captures bounded root license text and recognizes a deliberately small set of unambiguous standard-license texts for independently detected source components. Metadata/text conflicts remain unresolved.
 - Bounded documentation and PDF text now produce deterministic, line-cited `artifact_mentioned` evidence for a narrow reviewed phrase set. Mentions remain `mentioned_only` and cannot affect potential or confirmed scores.
-- Schema-validated LLM extraction and broader reviewed license recognition are the next Phase 3 slices.
+- Phase 4 is in progress: `mot extract-llm` uses a provider-neutral structured client with an OpenAI-compatible adapter, strict proposal schemas, exact citation validation, source/prompt/model/token provenance, and review-only evidence output.
+- Phase 4 will use local SQLite for the review/override audit and a five-document labeled evaluation set with a 95% precision and 100% accepted-citation target. Broader reviewed license recognition remains future Phase 3 depth work.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

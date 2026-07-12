@@ -110,6 +110,7 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
                 default_branch="main",
                 private=False,
                 archived=False,
+                declared_license="MIT",
             )
 
         def resolve_commit(self, owner: str, repository: str, revision: str) -> str:

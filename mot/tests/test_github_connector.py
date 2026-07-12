@@ -19,6 +19,7 @@ def test_github_collection_pins_commit_and_collects_tree_metadata() -> None:
                     "default_branch": "main",
                     "private": False,
                     "archived": False,
+                    "license": {"spdx_id": "MIT"},
                 },
             )
         if request.url.path == "/repos/example/model/commits/main":
@@ -53,6 +54,7 @@ def test_github_collection_pins_commit_and_collects_tree_metadata() -> None:
     assert result.repository_url == "https://github.com/example/model"
     assert result.snapshot.requested_revision is None
     assert result.snapshot.resolved_revision == "a" * 40
+    assert result.snapshot.declared_license == "MIT"
     assert result.evidence_report is not None
     assert [file.path for file in result.snapshot.files] == ["README.md", "src/train.py"]
     assert requests[-1].url.params["recursive"] == "1"

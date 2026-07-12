@@ -147,6 +147,7 @@ class GitHubSnapshot(BaseModel):
     retrieved_at: datetime
     private: bool
     archived: bool
+    declared_license: str | None = None
     files: tuple[RepositoryFile, ...]
     warnings: tuple[str, ...] = ()
 

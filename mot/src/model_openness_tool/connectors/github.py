@@ -29,6 +29,7 @@ class GitHubRepositoryMetadata:
     default_branch: str
     private: bool
     archived: bool
+    declared_license: str | None = None
 
 
 @dataclass(frozen=True)
@@ -90,11 +91,13 @@ class GitHubRestClient:
         full_name = payload.get("full_name")
         if not isinstance(default_branch, str) or not isinstance(full_name, str):
             raise GitHubSourceError(AccessStatus.ERROR, "Invalid GitHub repository response")
+        declared_license = _declared_license(payload.get("license"))
         return GitHubRepositoryMetadata(
             identifier=full_name,
             default_branch=default_branch,
             private=bool(payload.get("private", False)),
             archived=bool(payload.get("archived", False)),
+            declared_license=declared_license,
         )
 
     def resolve_commit(self, owner: str, repository: str, revision: str) -> str:
@@ -209,6 +212,7 @@ class GitHubConnector:
                 retrieved_at=self._clock(),
                 private=metadata.private,
                 archived=metadata.archived,
+                declared_license=metadata.declared_license,
                 files=files,
             )
             return GitHubCollectionResult(
@@ -234,3 +238,15 @@ class GitHubConnector:
                 )
             files.append(RepositoryFile(path=entry.path, size=entry.size, blob_id=entry.blob_id))
         return tuple(sorted(files, key=lambda item: item.path))
+
+
+def _declared_license(value: object) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    spdx_id = value.get("spdx_id")
+    if not isinstance(spdx_id, str):
+        return None
+    spdx_id = spdx_id.strip()
+    if not spdx_id or spdx_id == "NOASSERTION":
+        return None
+    return spdx_id

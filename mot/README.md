@@ -46,6 +46,14 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
   --output openai-gpt2-source.json
 ```
 
+To inspect a source repository with GitHub-identified SPDX license metadata:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot collect-github https://github.com/huggingface/transformers \
+  --output transformers-source.json
+```
+
 Use `GITHUB_TOKEN` for private repositories or higher API limits, or select another environment variable with `--token-env`. Tokens are never accepted as CLI values or written to reports.
 
 To follow up to three discovered GitHub repositories and merge their pinned source evidence into the provisional assessment:
@@ -56,7 +64,7 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
   --follow-github --output gpt2-linked-evaluation.json
 ```
 
-GitHub following is opt-in. Deterministic source rules detect explicit architecture, training, inference, evaluation, preprocessing, and dependency filenames while excluding test directories. Linked evidence can raise only the evidence-supported potential score; license scope still requires review before any verified classification.
+GitHub following is opt-in. Deterministic source rules detect explicit architecture, training, inference, evaluation, preprocessing, and dependency filenames while excluding test directories. When GitHub identifies the repository license, its SPDX ID is attached only to the matched source-code components. Linked evidence can raise only the evidence-supported potential score; human review is still required before any verified classification.
 
 Collect a revision-pinned Hugging Face dataset manifest and bounded dataset-card/license files without downloading released data:
 

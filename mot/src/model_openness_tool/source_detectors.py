@@ -22,7 +22,7 @@ from model_openness_tool.evidence import (
     PaperEvidenceReport,
 )
 
-GITHUB_DETECTOR_VERSION = "github-manifest-v1"
+GITHUB_DETECTOR_VERSION = "github-manifest-v2"
 CODE_SUFFIXES = frozenset({".ipynb", ".py", ".sh"})
 DEPENDENCY_FILES = frozenset(
     {
@@ -80,6 +80,19 @@ def detect_github_evidence(
                     claim=EvidenceClaim.LICENSE_FILE_EXISTS,
                 )
             )
+
+    if snapshot.declared_license is not None:
+        for component_id in sorted(component_evidence):
+            item = _github_evidence_item(
+                snapshot,
+                component_id,
+                "GitHub repository metadata#license.spdx_id",
+                claim=EvidenceClaim.LICENSE_DECLARED,
+                value=snapshot.declared_license,
+                confidence=0.98,
+            )
+            evidence.append(item)
+            component_evidence[component_id].append(item)
 
     findings = tuple(
         ComponentFinding(
@@ -190,13 +203,17 @@ def _github_evidence_item(
     path: str,
     *,
     claim: EvidenceClaim = EvidenceClaim.ARTIFACT_EXISTS,
+    value: str | None = None,
+    confidence: float = 0.95,
 ) -> EvidenceItem:
+    evidence_value = value or path
     identity = json.dumps(
         {
             "snapshot": snapshot.snapshot_id,
             "component": component_id,
             "claim": claim.value,
             "path": path,
+            "value": evidence_value,
             "method": GITHUB_DETECTOR_VERSION,
         },
         sort_keys=True,
@@ -206,13 +223,17 @@ def _github_evidence_item(
         evidence_id=sha256(identity.encode()).hexdigest(),
         component_id=component_id,
         claim=claim,
-        value=path,
+        value=evidence_value,
         source_url=(
-            f"https://github.com/{snapshot.repository}/blob/"
-            f"{snapshot.resolved_revision}/{quote(path, safe='/')}"
+            f"https://github.com/{snapshot.repository}/tree/{snapshot.resolved_revision}"
+            if path.startswith("GitHub repository metadata#")
+            else (
+                f"https://github.com/{snapshot.repository}/blob/"
+                f"{snapshot.resolved_revision}/{quote(path, safe='/')}"
+            )
         ),
         revision=snapshot.resolved_revision,
         path=path,
         extraction_method=GITHUB_DETECTOR_VERSION,
-        confidence=0.95,
+        confidence=confidence,
     )

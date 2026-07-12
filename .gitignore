@@ -18,3 +18,14 @@
 .gitattributes
 .editorconfig
 models/.processed
+
+# Local uv/Python development state for the MOT Python package.
+/mot/.venv/
+/mot/.uv-cache/
+/mot/.uv-python/
+/mot/.pytest_cache/
+/mot/.ruff_cache/
+/mot/.mypy_cache/
+/mot/.coverage
+**/__pycache__/
+*.py[cod]

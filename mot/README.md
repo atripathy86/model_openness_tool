@@ -116,10 +116,15 @@ Collect bounded, content-addressed text from a public PDF:
 UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
   uv run mot collect-pdf \
   https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf \
+  --mineru-url http://127.0.0.1:30000 \
   --output dummy-pdf-evidence.json
 ```
 
-PDF collection accepts at most 10 MB, extracts at most the first 100 pages and 500,000 characters, validates redirects, and blocks local or non-public literal addresses. Image-only PDFs without extractable text require a later OCR workflow.
+PDF collection accepts at most 10 MB, sends at most the first 100 pages through the uv-installed MinerU `vlm-http-client`, retains at most 500,000 Markdown characters, validates source redirects, and blocks local or non-public literal source addresses. Set `MINERU_SERVER_URL` instead of `--mineru-url` when preferred. The VLM service is externally provided and MOT does not launch or download it.
+
+When MinerU or its VLM service is unavailable, collection falls back to bounded `pypdf` text extraction. The snapshot records `pypdf-fallback` and includes the MinerU failure in its warnings, so lower-fidelity evidence is never silent. Pass `--no-pdf-fallback` to require MinerU success.
+
+The optional `--backend hybrid-http-client` mode requires installing `mineru[pipeline]` into the same local uv environment. The default VLM client and `pypdf` fallback do not require local Torch. Generic PDF Markdown or fallback text remains neutral review evidence and cannot automatically satisfy a MOF component.
 
 Collect a bounded, content-addressed snapshot of a public documentation page:
 

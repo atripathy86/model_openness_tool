@@ -24,7 +24,7 @@ from model_openness_tool.connectors.huggingface_dataset import (
     HuggingFaceDatasetConnector,
     HuggingFaceDatasetSdkClient,
 )
-from model_openness_tool.connectors.pdf import PdfConnector
+from model_openness_tool.connectors.pdf import MinerUBackend, PdfConnector
 from model_openness_tool.evidence import (
     AccessStatus,
     CollectionResult,
@@ -197,9 +197,32 @@ def collect_pdf(
         Path | None,
         typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
     ] = None,
+    mineru_url: Annotated[
+        str | None,
+        typer.Option(
+            "--mineru-url",
+            help="OpenAI-compatible MinerU VLM server; defaults to MINERU_SERVER_URL.",
+        ),
+    ] = None,
+    backend: Annotated[
+        MinerUBackend,
+        typer.Option("--backend", help="MinerU remote extraction backend."),
+    ] = MinerUBackend.VLM_HTTP_CLIENT,
+    pdf_fallback: Annotated[
+        bool,
+        typer.Option(
+            "--pdf-fallback/--no-pdf-fallback",
+            help="Use bounded pypdf text extraction when MinerU is unavailable.",
+        ),
+    ] = True,
 ) -> None:
-    """Collect bounded, content-addressed text from a public PDF."""
-    result = PdfConnector(DocumentationHttpClient()).collect(pdf_url)
+    """Collect bounded, content-addressed MinerU Markdown from a public PDF."""
+    result = PdfConnector(
+        DocumentationHttpClient(),
+        backend=backend,
+        server_url=mineru_url or os.environ.get("MINERU_SERVER_URL", "http://127.0.0.1:30000"),
+        allow_fallback=pdf_fallback,
+    ).collect(pdf_url)
     _emit_json(result, output)
     if result.access_status != AccessStatus.AVAILABLE:
         raise typer.Exit(code=2)
@@ -511,7 +534,10 @@ def _collect_paper(paper: str) -> PaperCollectionResult | PdfCollectionResult:
     if normalized.startswith(("http://", "https://")) and normalized.split("?", 1)[0].endswith(
         ".pdf"
     ):
-        return PdfConnector(DocumentationHttpClient()).collect(paper)
+        return PdfConnector(
+            DocumentationHttpClient(),
+            server_url=os.environ.get("MINERU_SERVER_URL", "http://127.0.0.1:30000"),
+        ).collect(paper)
     return ArxivConnector(ArxivApiClient()).collect(paper)
 
 

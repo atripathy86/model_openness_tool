@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0013
 
 ## Context
 
@@ -12,7 +12,7 @@ collect arbitrary PDF URLs, while treating every PDF as a research paper or tech
 report would overstate what the link proves. PDF parsing also needs explicit resource,
 redirect, and network-safety limits.
 
-## Decision
+## Original decision
 
 - Add `mot collect-pdf` and allow opt-in paper following to collect generic PDF links.
 - Accept only public HTTP(S) URLs on standard web ports, validate every redirect, and

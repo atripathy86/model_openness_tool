@@ -15,6 +15,7 @@ authors = [
 dependencies = [
   "httpx>=0.28,<1",
   "huggingface-hub>=1.23,<2",
+  "mineru>=3.3,<4",
   "pydantic>=2.11,<3",
   "pypdf>=6.5,<7",
   "pyyaml>=6.0,<7",

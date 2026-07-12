@@ -296,6 +296,8 @@ class PdfSnapshot(BaseModel):
     content_type: str
     page_count: int = Field(ge=1)
     extracted_page_count: int = Field(ge=0)
+    extraction_backend: str
+    extractor_version: str
     text: TextArtifact
     warnings: tuple[str, ...] = ()
 

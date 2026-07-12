@@ -45,15 +45,6 @@ def test_collect_pdf_command_writes_neutral_evidence(
 ) -> None:
     url = "https://example.com/report.pdf"
 
-    class FakePage:
-        def extract_text(self) -> str:
-            return "Example PDF report"
-
-    class FakeReader:
-        def __init__(self, _source: object, strict: bool) -> None:
-            assert strict is False
-            self.pages = [FakePage()]
-
     class FakePdfClient:
         def fetch(self, requested_url: str, max_bytes: int) -> DocumentResponse:
             assert requested_url == url
@@ -64,11 +55,31 @@ def test_collect_pdf_command_writes_neutral_evidence(
                 content=b"%PDF mocked",
             )
 
+    class FakeMinerUExtractor:
+        def extract(self, content: bytes, **options: object) -> object:
+            from model_openness_tool.connectors.pdf import MinerUExtraction
+
+            assert content == b"%PDF mocked"
+            assert options["server_url"] == "http://mineru.example.com:30000"
+            return MinerUExtraction("Example PDF report", 1, 1, "3.3.0", "vlm-http-client")
+
     monkeypatch.setattr(cli, "DocumentationHttpClient", FakePdfClient)
-    monkeypatch.setattr("model_openness_tool.connectors.pdf.PdfReader", FakeReader)
+    monkeypatch.setattr(
+        "model_openness_tool.connectors.pdf.MinerUCliExtractor", FakeMinerUExtractor
+    )
     output = tmp_path / "pdf.json"
 
-    result = runner.invoke(cli.app, ["collect-pdf", url, "--output", str(output)])
+    result = runner.invoke(
+        cli.app,
+        [
+            "collect-pdf",
+            url,
+            "--mineru-url",
+            "http://mineru.example.com:30000",
+            "--output",
+            str(output),
+        ],
+    )
 
     assert result.exit_code == 0
     payload = json.loads(output.read_text(encoding="utf-8"))

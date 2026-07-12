@@ -173,3 +173,22 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 Set `OPENAI_BASE_URL` for the OpenAI-compatible endpoint and, when authentication is required, set `OPENAI_API_KEY`. The key is optional for unauthenticated local endpoints and is never persisted. `--base-url` can override the environment at runtime without placing a deployment value in project documentation. If `--model` is omitted, MOT discovers the first model reported by the endpoint. Provider output must pass the extraction schema and exact line-citation validation. Accepted proposals are recorded only as review-required `artifact_mentioned` evidence; rejected citations remain visible in the report, and no LLM proposal directly affects a MOF score.
+
+Import citation-validated proposals into the local SQLite review queue and list its current state:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot review-import transformers-training-llm-proposals.json
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot review-list
+```
+
+Append a human decision using an evidence ID returned by `review-list`:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot review-decide <evidence-id> --decision accept \
+  --reviewer <reviewer-id> --reason "Citation and component mapping verified."
+```
+
+The default database is `.mot/review.db` and is ignored by Git. Imports are idempotent. Review items and accept/reject events are immutable; a later decision supersedes the current status without deleting the earlier audit event. Reviewer identity is operator-supplied until Phase 5 adds authenticated API boundaries.

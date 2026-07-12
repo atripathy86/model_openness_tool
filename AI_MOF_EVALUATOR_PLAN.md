@@ -660,5 +660,6 @@ As of 2026-07-12:
 - Pinned GitHub collection now captures bounded root license text and recognizes a deliberately small set of unambiguous standard-license texts for independently detected source components. Metadata/text conflicts remain unresolved.
 - Bounded documentation and PDF text now produce deterministic, line-cited `artifact_mentioned` evidence for a narrow reviewed phrase set. Mentions remain `mentioned_only` and cannot affect potential or confirmed scores.
 - Phase 4 is in progress: `mot extract-llm` uses a provider-neutral structured client with an OpenAI-compatible adapter, strict proposal schemas, exact citation validation, source/prompt/model/token provenance, and review-only evidence output.
-- Phase 4 will use local SQLite for the review/override audit and a five-document labeled evaluation set with a 95% precision and 100% accepted-citation target. Broader reviewed license recognition remains future Phase 3 depth work.
+- `mot review-import`, `mot review-list`, and `mot review-decide` provide a local SQLite review queue with idempotent imports, immutable evidence items, and append-only override audit events.
+- The remaining Phase 4 slice is a five-document labeled evaluation set with a 95% precision and 100% accepted-citation target. Broader reviewed license recognition remains future Phase 3 depth work.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

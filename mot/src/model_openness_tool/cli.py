@@ -47,6 +47,13 @@ from model_openness_tool.llm_extraction import (
     OpenAiCompatibleClient,
 )
 from model_openness_tool.model_yaml import load_model_yaml
+from model_openness_tool.review_store import (
+    ReviewDecision,
+    ReviewListResult,
+    ReviewStatus,
+    ReviewStore,
+    load_extraction_report,
+)
 from model_openness_tool.scoring import ModelEvaluator
 from model_openness_tool.source_detectors import merge_evidence_reports
 
@@ -297,6 +304,78 @@ def extract_llm(
     _emit_json(result, output)
     if result.status == ExtractionStatus.ERROR:
         raise typer.Exit(code=2)
+
+
+@app.command("review-import")
+def review_import(
+    extraction_file: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    database: Annotated[
+        Path,
+        typer.Option("--database", dir_okay=False, help="Local SQLite review database."),
+    ] = Path(".mot/review.db"),
+) -> None:
+    """Import accepted, citation-validated LLM proposals into the review queue."""
+    try:
+        report = load_extraction_report(extraction_file)
+    except (OSError, ValueError, ValidationError) as error:
+        raise typer.BadParameter(f"Invalid LLM extraction report: {error}") from error
+    result = ReviewStore(database).import_report(report)
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("review-list")
+def review_list(
+    database: Annotated[
+        Path,
+        typer.Option("--database", dir_okay=False, help="Local SQLite review database."),
+    ] = Path(".mot/review.db"),
+    status: Annotated[
+        ReviewStatus | None,
+        typer.Option("--status", help="Filter by current review status."),
+    ] = None,
+) -> None:
+    """List queued LLM evidence proposals and their latest review status."""
+    result = ReviewListResult(
+        database=str(database),
+        items=ReviewStore(database).list_items(status),
+    )
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("review-decide")
+def review_decide(
+    evidence_id: Annotated[str, typer.Argument(help="Queued evidence identifier.")],
+    decision: Annotated[
+        ReviewDecision,
+        typer.Option("--decision", help="Accept or reject the evidence proposal."),
+    ],
+    reviewer: Annotated[
+        str,
+        typer.Option("--reviewer", help="Reviewer identity recorded in the audit event."),
+    ],
+    reason: Annotated[
+        str,
+        typer.Option("--reason", help="Required review rationale."),
+    ],
+    database: Annotated[
+        Path,
+        typer.Option("--database", dir_okay=False, help="Local SQLite review database."),
+    ] = Path(".mot/review.db"),
+) -> None:
+    """Append an immutable accept or reject event for queued evidence."""
+    try:
+        event = ReviewStore(database).append_decision(
+            evidence_id,
+            decision=decision,
+            reviewer=reviewer,
+            reason=reason,
+        )
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(event.model_dump_json(indent=2))
 
 
 @app.command("assess")

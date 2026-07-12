@@ -166,14 +166,16 @@ class HuggingFaceConnector:
         client: HubClient,
         cache_dir: Path,
         *,
-        max_model_card_bytes: int = 1_000_000,
+        max_text_artifact_bytes: int = 1_000_000,
+        max_total_text_bytes: int = 3_000_000,
         max_files: int = 100_000,
         catalog: FrameworkCatalog | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client
         self._cache_dir = cache_dir
-        self._max_model_card_bytes = max_model_card_bytes
+        self._max_text_artifact_bytes = max_text_artifact_bytes
+        self._max_total_text_bytes = max_total_text_bytes
         self._max_files = max_files
         self._catalog = catalog or load_catalog()
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -182,7 +184,15 @@ class HuggingFaceConnector:
         try:
             metadata = self._client.get_model(model_id, revision)
             files = self._load_files(model_id, metadata.revision)
-            model_card, warnings = self._load_model_card(metadata, files)
+            text_artifacts, warnings = self._load_text_artifacts(metadata, files)
+            model_card = next(
+                (
+                    artifact
+                    for artifact in text_artifacts
+                    if artifact.path.casefold() == "readme.md"
+                ),
+                None,
+            )
             source_url = f"https://huggingface.co/{metadata.model_id}/tree/{metadata.revision}"
             snapshot_id = sha256(
                 f"huggingface:model:{metadata.model_id}:{metadata.revision}".encode()
@@ -201,6 +211,7 @@ class HuggingFaceConnector:
                 declared_license=metadata.declared_license,
                 files=files,
                 model_card=model_card,
+                text_artifacts=text_artifacts,
                 warnings=warnings,
             )
             return CollectionResult(
@@ -234,37 +245,61 @@ class HuggingFaceConnector:
             )
         return tuple(sorted(files, key=lambda item: item.path))
 
-    def _load_model_card(
+    def _load_text_artifacts(
         self,
         metadata: HubModelMetadata,
         files: tuple[RepositoryFile, ...],
-    ) -> tuple[TextArtifact | None, tuple[str, ...]]:
-        readme = next((item for item in files if item.path.casefold() == "readme.md"), None)
-        if readme is None:
-            return None, ()
-        if readme.size > self._max_model_card_bytes:
-            return None, (f"README.md exceeds the {self._max_model_card_bytes}-byte limit",)
+    ) -> tuple[tuple[TextArtifact, ...], tuple[str, ...]]:
+        selected_names = {
+            "readme.md",
+            "config.json",
+            "generation_config.json",
+            "tokenizer_config.json",
+            "license",
+            "license.md",
+            "license.txt",
+        }
+        selected = [item for item in files if item.path.casefold() in selected_names]
+        artifacts: list[TextArtifact] = []
+        warnings: list[str] = []
+        total_bytes = 0
 
-        try:
-            path = self._client.download_file(
-                metadata.model_id,
-                metadata.revision,
-                readme.path,
-                self._cache_dir,
+        for file in selected:
+            if file.size > self._max_text_artifact_bytes:
+                warnings.append(
+                    f"{file.path} exceeds the {self._max_text_artifact_bytes}-byte file limit"
+                )
+                continue
+            if total_bytes + file.size > self._max_total_text_bytes:
+                warnings.append(
+                    f"Skipping {file.path}: selected text exceeds the "
+                    f"{self._max_total_text_bytes}-byte total limit"
+                )
+                continue
+            try:
+                path = self._client.download_file(
+                    metadata.model_id,
+                    metadata.revision,
+                    file.path,
+                    self._cache_dir,
+                )
+                with path.open("rb") as handle:
+                    raw = handle.read(self._max_text_artifact_bytes + 1)
+            except (HubSourceError, OSError) as error:
+                warnings.append(f"Could not read {file.path}: {error}")
+                continue
+            if len(raw) > self._max_text_artifact_bytes:
+                warnings.append(
+                    f"{file.path} exceeds the {self._max_text_artifact_bytes}-byte file limit"
+                )
+                continue
+            total_bytes += len(raw)
+            artifacts.append(
+                TextArtifact(
+                    path=file.path,
+                    content_sha256=sha256(raw).hexdigest(),
+                    content=raw.decode("utf-8", errors="replace"),
+                )
             )
-            with path.open("rb") as handle:
-                raw = handle.read(self._max_model_card_bytes + 1)
-        except (HubSourceError, OSError) as error:
-            return None, (f"Could not read README.md: {error}",)
 
-        if len(raw) > self._max_model_card_bytes:
-            return None, (f"README.md exceeds the {self._max_model_card_bytes}-byte limit",)
-
-        return (
-            TextArtifact(
-                path=readme.path,
-                content_sha256=sha256(raw).hexdigest(),
-                content=raw.decode("utf-8", errors="replace"),
-            ),
-            (),
-        )
+        return tuple(artifacts), tuple(warnings)

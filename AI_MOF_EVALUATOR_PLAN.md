@@ -645,7 +645,9 @@ As of 2026-07-12:
 - Phase 0 baseline decisions and Phase 1 scoring foundation are implemented.
 - The uv-managed `model-openness-tool` distribution exposes the `mot` CLI.
 - The Python scorer matches the current named Drupal `Test_Data` progress fixtures.
-- Phase 2 is in progress: revision-pinned Hugging Face metadata/tree/model-card collection and conservative repository evidence detection are implemented behind `mot collect`.
-- The live smoke test downloads only the bounded model card; weight presence is established from repository/LFS metadata.
-- Provisional assessment mapping, additional bounded config/license content, and broader fixture coverage remain before Phase 2 exit.
+- Phase 2 is implemented: `mot collect`, offline `mot assess`, and end-to-end `mot evaluate` provide revision-pinned Hugging Face evidence and conservative provisional assessments.
+- Bounded model cards, selected configs, and license files are collected; weight presence is established from repository/LFS metadata without downloading weights.
+- Confirmed and evidence-supported potential scores are reported separately, with model-level license scope held for review.
+- The legacy `tools-py/model_scraper.py` draft-YAML workflow is documented as non-authoritative; new evaluator work uses the uv-managed `mot/` package.
+- Phase 3 linked repository, dataset, paper, identity-resolution, and deeper license-scope work is next.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

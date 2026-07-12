@@ -91,6 +91,7 @@ See https://arxiv.org/abs/1234.5678 and our benchmark results.
             HubFileMetadata("model.safetensors", 1000, "weight", "b" * 64, 1000),
             HubFileMetadata("README.md", card.stat().st_size, "readme"),
             HubFileMetadata("config.json", 100, "config"),
+            HubFileMetadata("LICENSE", 100, "license"),
             HubFileMetadata("modeling_example.py", 200, "architecture"),
             HubFileMetadata("inference.py", 150, "inference"),
         ),
@@ -111,8 +112,15 @@ See https://arxiv.org/abs/1234.5678 and our benchmark results.
     assert client.model_requests == [("example/model", "main")]
     assert client.file_requests == [("example/model", "a" * 40)]
     assert client.download_requests == [
-        ("example/model", "a" * 40, "README.md", tmp_path / "cache")
+        ("example/model", "a" * 40, "LICENSE", tmp_path / "cache"),
+        ("example/model", "a" * 40, "README.md", tmp_path / "cache"),
+        ("example/model", "a" * 40, "config.json", tmp_path / "cache"),
     ]
+    assert {artifact.path for artifact in result.report.snapshot.text_artifacts} == {
+        "README.md",
+        "config.json",
+        "LICENSE",
+    }
 
     for component_id in (8, 9, 10, 13, 17):
         assert _finding(result, component_id).availability == AvailabilityStatus.PRESENT
@@ -124,6 +132,7 @@ See https://arxiv.org/abs/1234.5678 and our benchmark results.
     ]
     assert len(license_evidence) == 1
     assert license_evidence[0].value == "apache-2.0"
+    assert any(item.claim == EvidenceClaim.LICENSE_FILE_EXISTS for item in result.report.evidence)
 
 
 def test_collect_does_not_download_oversized_model_card(tmp_path: Path) -> None:
@@ -146,12 +155,12 @@ def test_collect_does_not_download_oversized_model_card(tmp_path: Path) -> None:
     result = HuggingFaceConnector(
         client,
         cache_dir=tmp_path / "cache",
-        max_model_card_bytes=100,
+        max_text_artifact_bytes=100,
     ).collect("example/model")
 
     assert result.report is not None
     assert result.report.snapshot.model_card is None
-    assert "exceeds the 100-byte limit" in result.report.snapshot.warnings[0]
+    assert "exceeds the 100-byte file limit" in result.report.snapshot.warnings[0]
     assert not client.download_requests
     assert _finding(result, 13).availability == AvailabilityStatus.PRESENT
 
@@ -176,12 +185,12 @@ def test_collect_rechecks_model_card_size_after_download(tmp_path: Path) -> None
     result = HuggingFaceConnector(
         client,
         cache_dir=tmp_path / "cache",
-        max_model_card_bytes=100,
+        max_text_artifact_bytes=100,
     ).collect("example/model")
 
     assert result.report is not None
     assert result.report.snapshot.model_card is None
-    assert "exceeds the 100-byte limit" in result.report.snapshot.warnings[0]
+    assert "exceeds the 100-byte file limit" in result.report.snapshot.warnings[0]
 
 
 def test_collect_enforces_repository_file_limit(tmp_path: Path) -> None:

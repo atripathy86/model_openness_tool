@@ -28,6 +28,7 @@ class EvidenceClaim(StrEnum):
     ARTIFACT_EXISTS = "artifact_exists"
     ARTIFACT_MENTIONED = "artifact_mentioned"
     LICENSE_DECLARED = "license_declared"
+    LICENSE_FILE_EXISTS = "license_file_exists"
 
 
 class RepositoryFile(BaseModel):
@@ -64,6 +65,7 @@ class HuggingFaceSnapshot(BaseModel):
     declared_license: str | None
     files: tuple[RepositoryFile, ...]
     model_card: TextArtifact | None = None
+    text_artifacts: tuple[TextArtifact, ...] = ()
     warnings: tuple[str, ...] = ()
 
 
@@ -97,6 +99,9 @@ class EvidenceReport(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     snapshot: HuggingFaceSnapshot
+    catalog_version: str = "unknown"
+    catalog_sha256: str = ""
+    detector_version: str = "unknown"
     evidence: tuple[EvidenceItem, ...]
     findings: tuple[ComponentFinding, ...]
 

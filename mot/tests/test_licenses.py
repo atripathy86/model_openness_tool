@@ -26,3 +26,11 @@ def test_license_catalog_hash_covers_both_source_files(
     license_registry: LicenseRegistry,
 ) -> None:
     assert len(license_registry.catalog_sha256) == 64
+
+
+def test_license_ids_are_normalized_without_guessing(
+    license_registry: LicenseRegistry,
+) -> None:
+    assert license_registry.normalize("apache-2.0") == "Apache-2.0"
+    assert license_registry.normalize("  cc-by-4.0 ") == "CC-BY-4.0"
+    assert license_registry.normalize("custom-license") is None

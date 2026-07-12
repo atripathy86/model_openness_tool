@@ -63,6 +63,7 @@ class LicenseRecord(BaseModel):
 class LicenseRegistry:
     def __init__(self, records: dict[str, LicenseRecord], catalog_sha256: str) -> None:
         self._records = records
+        self._casefold_ids = {license_id.casefold(): license_id for license_id in records}
         self.catalog_sha256 = catalog_sha256
 
     @classmethod
@@ -104,6 +105,10 @@ class LicenseRegistry:
 
     def record(self, license_id: str) -> LicenseRecord | None:
         return self._records.get(license_id)
+
+    def normalize(self, license_id: str) -> str | None:
+        """Return the canonical MOT/SPDX ID for a case-insensitive exact match."""
+        return self._casefold_ids.get(license_id.strip().casefold())
 
     def is_open(self, license_id: str) -> bool:
         record = self.record(license_id)

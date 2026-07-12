@@ -1,5 +1,7 @@
 # Model Openness Tool - Python Tools
 
+> **Legacy draft tooling:** New evaluator development lives in the uv-managed `../mot/` project. Use `uv run mot collect` for revision-pinned evidence and `uv run mot evaluate` for a conservative provisional assessment. `model_scraper.py` remains available for its existing draft-YAML workflow but is not the authoritative evidence or scoring implementation.
+
 Automated tools for working with the Model Openness Framework (MOF), including scraping model information from HuggingFace and identifying missing models.
 
 ## Tools Included

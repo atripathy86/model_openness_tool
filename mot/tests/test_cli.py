@@ -45,6 +45,7 @@ def test_evaluate_yaml_command(repository_root: Path) -> None:
 def test_collect_command_reads_token_from_environment_and_writes_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    repository_root: Path,
 ) -> None:
     card = tmp_path / "README.md"
     card.write_text("# Example", encoding="utf-8")
@@ -101,3 +102,43 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
     payload = json.loads(serialized)
     assert payload["access_status"] == "available"
     assert payload["report"]["snapshot"]["resolved_revision"] == "a" * 40
+
+    assessment_output = tmp_path / "assessment.json"
+    assess_result = runner.invoke(
+        cli.app,
+        [
+            "assess",
+            str(output),
+            "--repository-root",
+            str(repository_root),
+            "--output",
+            str(assessment_output),
+        ],
+    )
+    assert assess_result.exit_code == 0
+    assessment = json.loads(assessment_output.read_text(encoding="utf-8"))
+    assert assessment["kind"] == "provisional"
+    assert assessment["confirmed"]["classification"] == 0
+
+    evaluation_output = tmp_path / "evaluation.json"
+    evaluate_result = runner.invoke(
+        cli.app,
+        [
+            "evaluate",
+            "example/model",
+            "--repository-root",
+            str(repository_root),
+            "--token-env",
+            "TEST_HF_TOKEN",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+            "--output",
+            str(evaluation_output),
+        ],
+        env={"TEST_HF_TOKEN": "secret-token"},
+    )
+    assert evaluate_result.exit_code == 0
+    assert captured_token == ["secret-token", "secret-token"]
+    evaluation = json.loads(evaluation_output.read_text(encoding="utf-8"))
+    assert evaluation["collection"]["access_status"] == "available"
+    assert evaluation["assessment"]["kind"] == "provisional"

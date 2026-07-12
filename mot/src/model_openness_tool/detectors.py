@@ -72,6 +72,20 @@ def detect_repository_evidence(
             )
         )
 
+    for file in snapshot.files:
+        if file.path.casefold() not in {"license", "license.md", "license.txt"}:
+            continue
+        evidence.append(
+            _evidence_item(
+                snapshot=snapshot,
+                component_id=None,
+                claim=EvidenceClaim.LICENSE_FILE_EXISTS,
+                value=file.path,
+                path=file.path,
+                confidence=0.99,
+            )
+        )
+
     _add_model_card_mentions(snapshot, evidence, component_evidence)
 
     findings = []
@@ -108,6 +122,9 @@ def detect_repository_evidence(
 
     return EvidenceReport(
         snapshot=snapshot,
+        catalog_version=catalog.catalog_version,
+        catalog_sha256=catalog.catalog_sha256,
+        detector_version=DETECTOR_VERSION,
         evidence=tuple(evidence),
         findings=tuple(findings),
     )

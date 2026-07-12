@@ -3,6 +3,7 @@ from model_openness_tool.links import (
     dataset_sources_from_ids,
     extract_linked_sources,
     normalize_arxiv_paper,
+    normalize_doi_paper,
     normalize_github_repository,
     normalize_linked_source,
 )
@@ -86,6 +87,17 @@ def test_normalizes_direct_arxiv_identifiers_and_old_style_urls() -> None:
     old_style = normalize_arxiv_paper("https://arxiv.org/pdf/hep-th/9901001.pdf")
     assert old_style is not None
     assert old_style.identifier == "arxiv:hep-th/9901001"
+
+
+def test_normalizes_direct_doi_identifiers() -> None:
+    source = normalize_doi_paper("doi:10.18653/v1/n19-1423")
+    assert source is not None
+    assert source.identifier == "doi:10.18653/v1/n19-1423"
+    assert source.canonical_url == "https://doi.org/10.18653/v1/n19-1423"
+
+    bare = normalize_doi_paper("10.18653/v1/n19-1423")
+    assert bare is not None
+    assert bare.identifier == "doi:10.18653/v1/n19-1423"
 
 
 def test_structured_dataset_ids_become_linked_sources() -> None:

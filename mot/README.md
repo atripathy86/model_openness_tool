@@ -77,11 +77,19 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 
 Dataset following is opt-in and follows at most three unique datasets by default, with a hard CLI limit of ten. Dataset manifests can prove that released data and a data card exist, while exact training use, provenance, preprocessing, and license applicability remain review questions. When several linked datasets declare different licenses, the combined component license is reported as ambiguous rather than selecting one automatically.
 
-Collect version-pinned arXiv metadata without downloading a paper PDF:
+Collect bounded paper metadata without downloading a paper PDF. arXiv papers are
+version-pinned by their arXiv version, while DOI papers are content-addressed from
+Crossref metadata:
 
 ```bash
 UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
   uv run mot collect-paper 1810.04805 --output bert-paper-evidence.json
+```
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot collect-paper https://doi.org/10.18653/v1/N19-1423 \
+  --output bert-doi-paper-evidence.json
 ```
 
 Follow arXiv papers discovered in a Hugging Face model card and merge them into the provisional assessment:
@@ -92,7 +100,7 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
   --follow-papers --output bert-paper-evaluation.json
 ```
 
-Paper following is opt-in and follows at most three unique arXiv papers by default, with a hard CLI limit of ten. A resolved paper can prove only the Research paper component. Its metadata does not prove that a separate technical report, source code, data, or evaluation artifact has been released. DOI and generic PDF links remain discovery candidates but are not fetched by this arXiv-only connector.
+Paper following is opt-in and follows at most three unique arXiv or DOI papers by default, with a hard CLI limit of ten. A resolved paper can prove only the Research paper component. Its metadata does not prove that a separate technical report, source code, data, or evaluation artifact has been released. Generic PDF links remain discovery candidates but are not fetched by the metadata-only paper connectors.
 
 Collect a bounded, content-addressed snapshot of a public documentation page:
 

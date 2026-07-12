@@ -17,6 +17,7 @@ from model_openness_tool.connectors.documentation import (
     DocumentationConnector,
     DocumentationHttpClient,
 )
+from model_openness_tool.connectors.doi import CrossrefClient, DoiConnector
 from model_openness_tool.connectors.github import GitHubConnector, GitHubRestClient
 from model_openness_tool.connectors.huggingface import HuggingFaceConnector, HuggingFaceSdkClient
 from model_openness_tool.connectors.huggingface_dataset import (
@@ -164,15 +165,20 @@ def collect_dataset(
 def collect_paper(
     paper: Annotated[
         str,
-        typer.Argument(help="arXiv paper ID or URL, such as https://arxiv.org/abs/1912.01703."),
+        typer.Argument(
+            help=(
+                "arXiv or DOI paper identifier/URL, such as "
+                "https://arxiv.org/abs/1912.01703 or https://doi.org/10.18653/v1/n19-1423."
+            ),
+        ),
     ],
     output: Annotated[
         Path | None,
         typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
     ] = None,
 ) -> None:
-    """Collect version-pinned arXiv metadata without downloading the PDF."""
-    result = ArxivConnector(ArxivApiClient()).collect(paper)
+    """Collect bounded paper metadata without downloading the PDF."""
+    result = _collect_paper(paper)
     _emit_json(result, output)
     if result.access_status != AccessStatus.AVAILABLE:
         raise typer.Exit(code=2)
@@ -307,7 +313,7 @@ def evaluate_model(
         bool,
         typer.Option(
             "--follow-papers/--no-follow-papers",
-            help="Collect and merge version-pinned arXiv papers linked by the model card.",
+            help="Collect and merge arXiv and DOI papers linked by the model card.",
         ),
     ] = False,
     max_linked_papers: Annotated[
@@ -316,7 +322,7 @@ def evaluate_model(
             "--max-linked-papers",
             min=0,
             max=10,
-            help="Maximum linked arXiv papers to collect.",
+            help="Maximum linked arXiv or DOI papers to collect.",
         ),
     ] = 3,
     follow_documentation: Annotated[
@@ -385,16 +391,13 @@ def evaluate_model(
                 if dataset_result.evidence_report is not None:
                     linked_reports.append(dataset_result.evidence_report)
         if follow_papers:
-            paper_connector = ArxivConnector(ArxivApiClient())
             paper_sources = [
                 source
                 for source in collection.report.linked_sources
                 if source.source_type == LinkedSourceType.PAPER
-                and source.identifier.startswith("arxiv:")
+                and (source.identifier.startswith("arxiv:") or source.identifier.startswith("doi:"))
             ][:max_linked_papers]
-            linked_papers = tuple(
-                paper_connector.collect(source.canonical_url) for source in paper_sources
-            )
+            linked_papers = tuple(_collect_paper(source.canonical_url) for source in paper_sources)
             for paper_result in linked_papers:
                 if paper_result.evidence_report is not None:
                     linked_reports.append(paper_result.evidence_report)
@@ -473,6 +476,13 @@ def find_repository_root(start: Path | None = None) -> Path:
 
 def _connector(cache_dir: Path, token: str | None) -> HuggingFaceConnector:
     return HuggingFaceConnector(HuggingFaceSdkClient(token=token), cache_dir=cache_dir)
+
+
+def _collect_paper(paper: str) -> PaperCollectionResult:
+    normalized = paper.strip().casefold()
+    if normalized.startswith(("doi:", "10.")) or "doi.org/" in normalized:
+        return DoiConnector(CrossrefClient()).collect(paper)
+    return ArxivConnector(ArxivApiClient()).collect(paper)
 
 
 def _license_registry(root: Path) -> LicenseRegistry:

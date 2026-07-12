@@ -105,6 +105,20 @@ def normalize_arxiv_paper(value: str) -> LinkedSource | None:
     return source
 
 
+def normalize_doi_paper(value: str) -> LinkedSource | None:
+    candidate = value.strip()
+    if candidate.casefold().startswith("doi:"):
+        candidate = candidate.split(":", maxsplit=1)[1]
+    if "://" not in candidate:
+        candidate = f"https://doi.org/{candidate}"
+    source = normalize_linked_source(candidate, discovered_in="direct-input")
+    if source is None or source.source_type != LinkedSourceType.PAPER:
+        return None
+    if not source.identifier.startswith("doi:"):
+        return None
+    return source
+
+
 def dataset_sources_from_ids(
     dataset_ids: tuple[str, ...],
     *,

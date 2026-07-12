@@ -15,7 +15,7 @@ from model_openness_tool.evidence import (
     PaperSnapshot,
 )
 
-PAPER_DETECTOR_VERSION = "arxiv-metadata-v1"
+PAPER_DETECTOR_VERSION = "paper-metadata-v2"
 RESEARCH_PAPER_COMPONENT_ID = 21
 
 
@@ -53,7 +53,7 @@ def detect_paper_evidence(
             if component.id == RESEARCH_PAPER_COMPONENT_ID
             else (),
             rationale=(
-                "Resolved arXiv metadata proves that a research paper is publicly available."
+                "Resolved paper metadata proves that a research paper is publicly available."
                 if component.id == RESEARCH_PAPER_COMPONENT_ID
                 else "Paper metadata does not prove that this separate artifact is released."
             ),
@@ -95,7 +95,7 @@ def _paper_evidence_item(
         value=value,
         source_url=snapshot.source_url,
         revision=snapshot.resolved_revision,
-        path="arXiv metadata",
+        path="paper metadata",
         extraction_method=PAPER_DETECTOR_VERSION,
         confidence=confidence,
         excerpt=snapshot.abstract,

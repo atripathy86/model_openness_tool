@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from model_openness_tool import cli
 from model_openness_tool.connectors.arxiv import ArxivPaperMetadata
 from model_openness_tool.connectors.documentation import DocumentResponse
+from model_openness_tool.connectors.doi import DoiPaperMetadata
 from model_openness_tool.connectors.github import (
     GitHubRepositoryMetadata,
     GitHubTree,
@@ -65,6 +66,7 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
             "# Example\n\nSource: https://github.com/example/model\n\n"
             "Data: https://huggingface.co/datasets/example/data\n\n"
             "Paper: https://arxiv.org/abs/1912.01703\n\n"
+            "DOI: https://doi.org/10.18653/v1/n19-1423\n\n"
             "Docs: https://docs.example.com/model"
         ),
         encoding="utf-8",
@@ -158,6 +160,21 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
                 declared_license=None,
             )
 
+    class FakeDoiClient:
+        def get_work(self, doi: str) -> DoiPaperMetadata:
+            assert doi == "10.18653/v1/n19-1423"
+            return DoiPaperMetadata(
+                doi="10.18653/v1/n19-1423",
+                source_url="https://doi.org/10.18653/v1/n19-1423",
+                title="Example DOI paper",
+                authors=("D. Author",),
+                abstract="Example DOI abstract.",
+                published_at=datetime(2019, 6, 1, tzinfo=UTC),
+                updated_at=datetime(2020, 1, 1, tzinfo=UTC),
+                declared_license=None,
+                metadata_sha256="c" * 64,
+            )
+
     class FakeDocumentationClient:
         def fetch(self, url: str, max_bytes: int) -> DocumentResponse:
             assert url == "https://docs.example.com/model"
@@ -171,6 +188,7 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
     monkeypatch.setattr(cli, "GitHubRestClient", FakeGitHubClient)
     monkeypatch.setattr(cli, "HuggingFaceDatasetSdkClient", FakeDatasetClient)
     monkeypatch.setattr(cli, "ArxivApiClient", FakeArxivClient)
+    monkeypatch.setattr(cli, "CrossrefClient", FakeDoiClient)
     monkeypatch.setattr(cli, "DocumentationHttpClient", FakeDocumentationClient)
     output = tmp_path / "result.json"
     result = runner.invoke(
@@ -245,10 +263,11 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
     assert evaluation["collection"]["access_status"] == "available"
     assert len(evaluation["linked_github"]) == 1
     assert len(evaluation["linked_datasets"]) == 1
-    assert len(evaluation["linked_papers"]) == 1
+    assert len(evaluation["linked_papers"]) == 2
     assert len(evaluation["linked_documentation"]) == 1
     assert evaluation["linked_github"][0]["snapshot"]["resolved_revision"] == "b" * 40
     assert evaluation["linked_datasets"][0]["snapshot"]["resolved_revision"] == "d" * 40
     assert evaluation["linked_papers"][0]["snapshot"]["resolved_revision"] == "v2"
+    assert evaluation["linked_papers"][1]["snapshot"]["resolved_revision"] == f"sha256:{'c' * 64}"
     assert evaluation["linked_documentation"][0]["snapshot"]["title"] == "Model docs"
     assert evaluation["assessment"]["kind"] == "provisional"

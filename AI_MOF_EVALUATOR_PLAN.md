@@ -653,7 +653,7 @@ As of 2026-07-12:
 - Pinned GitHub manifests now provide conservative source-component evidence, and `mot evaluate --follow-github` can merge up to three linked repositories into the evidence-supported potential assessment.
 - `mot collect-dataset` now records revision-pinned Hugging Face dataset manifests plus bounded card/license content without downloading dataset files. Structured and linked dataset identities can be followed with `mot evaluate --follow-datasets`.
 - Released data-file and data-card evidence is merged conservatively. Dataset license declarations apply specifically to the dataset component, and conflicting declarations remain ambiguous and review-required.
-- `mot collect-paper` now resolves arXiv references to version-pinned, bounded Atom metadata without downloading PDFs. `mot evaluate --follow-papers` can merge resolved papers as Research paper evidence only.
+- `mot collect-paper` now resolves arXiv references to version-pinned, bounded Atom metadata and DOI references to content-addressed Crossref metadata without downloading PDFs. `mot evaluate --follow-papers` can merge resolved papers as Research paper evidence only.
 - `mot collect-doc` now captures bounded public text/HTML documentation as content-addressed review evidence. `mot evaluate --follow-documentation` follows normalized documentation links without automatically promoting any MOF component.
-- DOI resolution, generic PDF collection, semantic documentation extraction, and deeper source-license scope are the next Phase 3 slices.
+- Generic PDF collection, semantic documentation extraction, and deeper source-license scope are the next Phase 3 slices.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

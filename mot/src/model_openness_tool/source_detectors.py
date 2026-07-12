@@ -18,6 +18,7 @@ from model_openness_tool.evidence import (
     EvidenceReport,
     GitHubEvidenceReport,
     GitHubSnapshot,
+    PaperEvidenceReport,
 )
 
 GITHUB_DETECTOR_VERSION = "github-manifest-v1"
@@ -116,7 +117,7 @@ def detect_github_evidence(
 
 def merge_evidence_reports(
     primary: EvidenceReport,
-    linked: tuple[GitHubEvidenceReport | DatasetEvidenceReport, ...],
+    linked: tuple[GitHubEvidenceReport | DatasetEvidenceReport | PaperEvidenceReport, ...],
 ) -> EvidenceReport:
     for report in linked:
         if report.catalog_sha256 != primary.catalog_sha256:

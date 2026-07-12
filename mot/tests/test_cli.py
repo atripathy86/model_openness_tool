@@ -1,11 +1,13 @@
 import json
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from model_openness_tool import cli
+from model_openness_tool.connectors.arxiv import ArxivPaperMetadata
 from model_openness_tool.connectors.github import (
     GitHubRepositoryMetadata,
     GitHubTree,
@@ -60,7 +62,8 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
     card.write_text(
         (
             "# Example\n\nSource: https://github.com/example/model\n\n"
-            "Data: https://huggingface.co/datasets/example/data"
+            "Data: https://huggingface.co/datasets/example/data\n\n"
+            "Paper: https://arxiv.org/abs/1912.01703"
         ),
         encoding="utf-8",
     )
@@ -140,9 +143,23 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
         ) -> Path:
             return card
 
+    class FakeArxivClient:
+        def get_paper(self, paper_id: str) -> ArxivPaperMetadata:
+            assert paper_id == "1912.01703"
+            return ArxivPaperMetadata(
+                paper_id="1912.01703v2",
+                title="Example paper",
+                authors=("A. Author",),
+                abstract="Example abstract.",
+                published_at=datetime(2019, 12, 4, tzinfo=UTC),
+                updated_at=datetime(2020, 1, 1, tzinfo=UTC),
+                declared_license=None,
+            )
+
     monkeypatch.setattr(cli, "HuggingFaceSdkClient", FakeSdkClient)
     monkeypatch.setattr(cli, "GitHubRestClient", FakeGitHubClient)
     monkeypatch.setattr(cli, "HuggingFaceDatasetSdkClient", FakeDatasetClient)
+    monkeypatch.setattr(cli, "ArxivApiClient", FakeArxivClient)
     output = tmp_path / "result.json"
     result = runner.invoke(
         cli.app,
@@ -202,6 +219,7 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
             "--github-token-env",
             "TEST_GITHUB_TOKEN",
             "--follow-datasets",
+            "--follow-papers",
         ],
         env={
             "TEST_HF_TOKEN": "secret-token",
@@ -214,6 +232,8 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
     assert evaluation["collection"]["access_status"] == "available"
     assert len(evaluation["linked_github"]) == 1
     assert len(evaluation["linked_datasets"]) == 1
+    assert len(evaluation["linked_papers"]) == 1
     assert evaluation["linked_github"][0]["snapshot"]["resolved_revision"] == "b" * 40
     assert evaluation["linked_datasets"][0]["snapshot"]["resolved_revision"] == "d" * 40
+    assert evaluation["linked_papers"][0]["snapshot"]["resolved_revision"] == "v2"
     assert evaluation["assessment"]["kind"] == "provisional"

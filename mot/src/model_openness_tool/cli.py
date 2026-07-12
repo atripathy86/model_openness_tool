@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 from model_openness_tool import __version__
 from model_openness_tool.assessment import EvaluationRun, ProvisionalEvaluator
 from model_openness_tool.catalog import load_catalog
+from model_openness_tool.connectors.arxiv import ArxivApiClient, ArxivConnector
 from model_openness_tool.connectors.github import GitHubConnector, GitHubRestClient
 from model_openness_tool.connectors.huggingface import HuggingFaceConnector, HuggingFaceSdkClient
 from model_openness_tool.connectors.huggingface_dataset import (
@@ -26,6 +27,8 @@ from model_openness_tool.evidence import (
     GitHubCollectionResult,
     GitHubEvidenceReport,
     LinkedSourceType,
+    PaperCollectionResult,
+    PaperEvidenceReport,
 )
 from model_openness_tool.licenses import LicenseRegistry
 from model_openness_tool.model_yaml import load_model_yaml
@@ -151,6 +154,24 @@ def collect_dataset(
         raise typer.Exit(code=2)
 
 
+@app.command("collect-paper")
+def collect_paper(
+    paper: Annotated[
+        str,
+        typer.Argument(help="arXiv paper ID or URL, such as https://arxiv.org/abs/1912.01703."),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
+    ] = None,
+) -> None:
+    """Collect version-pinned arXiv metadata without downloading the PDF."""
+    result = ArxivConnector(ArxivApiClient()).collect(paper)
+    _emit_json(result, output)
+    if result.access_status != AccessStatus.AVAILABLE:
+        raise typer.Exit(code=2)
+
+
 @app.command("assess")
 def assess_evidence(
     evidence_file: Annotated[
@@ -258,11 +279,28 @@ def evaluate_model(
             help="Maximum linked Hugging Face datasets to collect.",
         ),
     ] = 3,
+    follow_papers: Annotated[
+        bool,
+        typer.Option(
+            "--follow-papers/--no-follow-papers",
+            help="Collect and merge version-pinned arXiv papers linked by the model card.",
+        ),
+    ] = False,
+    max_linked_papers: Annotated[
+        int,
+        typer.Option(
+            "--max-linked-papers",
+            min=0,
+            max=10,
+            help="Maximum linked arXiv papers to collect.",
+        ),
+    ] = 3,
 ) -> None:
     """Collect evidence and emit a conservative provisional MOF assessment."""
     collection = _connector(cache_dir, os.environ.get(token_env)).collect(model_id, revision)
     linked_github: tuple[GitHubCollectionResult, ...] = ()
     linked_datasets: tuple[DatasetCollectionResult, ...] = ()
+    linked_papers: tuple[PaperCollectionResult, ...] = ()
     assessment = None
     if collection.report is not None:
         assessment_report = collection.report
@@ -278,7 +316,9 @@ def evaluate_model(
             linked_github = tuple(
                 github_connector.collect(source.canonical_url) for source in github_sources
             )
-            linked_reports: list[GitHubEvidenceReport | DatasetEvidenceReport] = []
+            linked_reports: list[
+                GitHubEvidenceReport | DatasetEvidenceReport | PaperEvidenceReport
+            ] = []
             for linked_result in linked_github:
                 if linked_result.evidence_report is not None:
                     linked_reports.append(linked_result.evidence_report)
@@ -300,6 +340,20 @@ def evaluate_model(
             for dataset_result in linked_datasets:
                 if dataset_result.evidence_report is not None:
                     linked_reports.append(dataset_result.evidence_report)
+        if follow_papers:
+            paper_connector = ArxivConnector(ArxivApiClient())
+            paper_sources = [
+                source
+                for source in collection.report.linked_sources
+                if source.source_type == LinkedSourceType.PAPER
+                and source.identifier.startswith("arxiv:")
+            ][:max_linked_papers]
+            linked_papers = tuple(
+                paper_connector.collect(source.canonical_url) for source in paper_sources
+            )
+            for paper_result in linked_papers:
+                if paper_result.evidence_report is not None:
+                    linked_reports.append(paper_result.evidence_report)
         assessment_report = merge_evidence_reports(
             assessment_report,
             tuple(linked_reports),
@@ -312,6 +366,7 @@ def evaluate_model(
         collection=collection,
         linked_github=linked_github,
         linked_datasets=linked_datasets,
+        linked_papers=linked_papers,
         assessment=assessment,
     )
     _emit_json(run, output)

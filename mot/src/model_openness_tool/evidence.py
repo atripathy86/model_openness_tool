@@ -209,3 +209,41 @@ class DatasetCollectionResult(BaseModel):
     error: str | None = None
     snapshot: DatasetSnapshot | None = None
     evidence_report: DatasetEvidenceReport | None = None
+
+
+class PaperSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot_id: str
+    paper_id: str
+    source_url: str
+    requested_revision: str | None
+    resolved_revision: str
+    retrieved_at: datetime
+    title: str
+    authors: tuple[str, ...]
+    abstract: str
+    published_at: datetime
+    updated_at: datetime
+    declared_license: str | None = None
+
+
+class PaperEvidenceReport(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot: PaperSnapshot
+    catalog_version: str
+    catalog_sha256: str
+    detector_version: str
+    evidence: tuple[EvidenceItem, ...]
+    findings: tuple[ComponentFinding, ...]
+
+
+class PaperCollectionResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    paper_url: str
+    access_status: AccessStatus
+    error: str | None = None
+    snapshot: PaperSnapshot | None = None
+    evidence_report: PaperEvidenceReport | None = None

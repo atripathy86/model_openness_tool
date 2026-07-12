@@ -91,6 +91,20 @@ def normalize_github_repository(url: str) -> LinkedSource | None:
     return source
 
 
+def normalize_arxiv_paper(value: str) -> LinkedSource | None:
+    candidate = value.strip()
+    if candidate.casefold().startswith("arxiv:"):
+        candidate = candidate.split(":", maxsplit=1)[1]
+    if "://" not in candidate:
+        candidate = f"https://arxiv.org/abs/{candidate}"
+    source = normalize_linked_source(candidate, discovered_in="direct-input")
+    if source is None or source.source_type != LinkedSourceType.PAPER:
+        return None
+    if not source.identifier.startswith("arxiv:"):
+        return None
+    return source
+
+
 def dataset_sources_from_ids(
     dataset_ids: tuple[str, ...],
     *,
@@ -158,7 +172,7 @@ def _huggingface_source(parts: list[str], discovered_in: str) -> LinkedSource | 
 def _arxiv_source(parts: list[str], discovered_in: str) -> LinkedSource | None:
     if len(parts) < 2 or parts[0].casefold() not in {"abs", "pdf"}:
         return None
-    identifier = parts[1].removesuffix(".pdf")
+    identifier = "/".join(parts[1:]).removesuffix(".pdf")
     return LinkedSource(
         source_type=LinkedSourceType.PAPER,
         identifier=f"arxiv:{identifier}",

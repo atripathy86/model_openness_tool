@@ -2,6 +2,7 @@ from model_openness_tool.evidence import LinkedSourceType, TextArtifact
 from model_openness_tool.links import (
     dataset_sources_from_ids,
     extract_linked_sources,
+    normalize_arxiv_paper,
     normalize_github_repository,
     normalize_linked_source,
 )
@@ -74,6 +75,17 @@ def test_generic_pdf_is_recorded_as_paper() -> None:
 
     assert source is not None
     assert source.source_type == LinkedSourceType.PAPER
+
+
+def test_normalizes_direct_arxiv_identifiers_and_old_style_urls() -> None:
+    source = normalize_arxiv_paper("arxiv:1912.01703v2")
+    assert source is not None
+    assert source.identifier == "arxiv:1912.01703v2"
+    assert source.canonical_url == "https://arxiv.org/abs/1912.01703v2"
+
+    old_style = normalize_arxiv_paper("https://arxiv.org/pdf/hep-th/9901001.pdf")
+    assert old_style is not None
+    assert old_style.identifier == "arxiv:hep-th/9901001"
 
 
 def test_structured_dataset_ids_become_linked_sources() -> None:

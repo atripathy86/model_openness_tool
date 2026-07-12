@@ -41,6 +41,7 @@ from model_openness_tool.evidence import (
     PdfEvidenceReport,
 )
 from model_openness_tool.licenses import LicenseRegistry
+from model_openness_tool.llm_evaluation import evaluate_extractor, load_evaluation_set
 from model_openness_tool.llm_extraction import (
     ExtractionStatus,
     LlmEvidenceExtractor,
@@ -303,6 +304,50 @@ def extract_llm(
     )
     _emit_json(result, output)
     if result.status == ExtractionStatus.ERROR:
+        raise typer.Exit(code=2)
+
+
+@app.command("llm-eval")
+def evaluate_llm(
+    evaluation_file: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option(
+            "--base-url",
+            help="OpenAI-compatible API base URL; defaults to OPENAI_BASE_URL.",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model ID; discover the first endpoint model if omitted."),
+    ] = None,
+) -> None:
+    """Measure LLM proposal precision, recall, and citation validity."""
+    resolved_base_url = base_url or os.environ.get("OPENAI_BASE_URL")
+    if resolved_base_url is None:
+        raise typer.BadParameter("Set OPENAI_BASE_URL or pass --base-url")
+    try:
+        evaluation_set = load_evaluation_set(evaluation_file)
+    except (OSError, ValidationError) as error:
+        raise typer.BadParameter(f"Invalid labeled evaluation set: {error}") from error
+    report = evaluate_extractor(
+        evaluation_set,
+        client=OpenAiCompatibleClient(
+            base_url=resolved_base_url,
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            model=model,
+        ),
+        catalog=load_catalog(),
+    )
+    _emit_json(report, output)
+    if not report.passed:
         raise typer.Exit(code=2)
 
 

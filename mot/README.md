@@ -192,3 +192,13 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 The default database is `.mot/review.db` and is ignored by Git. Imports are idempotent. Review items and accept/reject events are immutable; a later decision supersedes the current status without deleting the earlier audit event. Reviewer identity is operator-supplied until Phase 5 adds authenticated API boundaries.
+
+Run the versioned five-case LLM extraction evaluation against the configured OpenAI-compatible endpoint:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot llm-eval tests/fixtures/llm-evaluation-v1.json \
+  --output llm-evaluation-report.json
+```
+
+The command reads `OPENAI_BASE_URL` and optional `OPENAI_API_KEY`, uses the same strict schema and citation validator as `extract-llm`, and exits nonzero when the gate fails while still writing the complete report. The initial gate requires all five cases to complete, at least one true positive, at least 95% precision, 100% raw citation validity, and zero LLM-only status promotions. Recall is reported but is not yet a release gate.

@@ -1,0 +1,30 @@
+{
+  "evaluation_version": "llm-evaluation-v1",
+  "cases": [
+    {
+      "case_id": "source-code-artifacts",
+      "text": "The training code is released in the linked repository. The preprocessing pipeline is provided as prepare_data.py.",
+      "expected_component_ids": [7, 16]
+    },
+    {
+      "case_id": "data-and-results",
+      "text": "The training dataset is ExampleCorpus v2. Evaluation results report an accuracy of 91 percent.",
+      "expected_component_ids": [12, 15]
+    },
+    {
+      "case_id": "weights-and-metadata",
+      "text": "The final model weights are published as model.safetensors. The training configuration lists optimizer and learning-rate settings.",
+      "expected_component_ids": [10, 17]
+    },
+    {
+      "case_id": "activity-without-artifacts",
+      "text": "We trained and evaluated the model before deployment.",
+      "expected_component_ids": []
+    },
+    {
+      "case_id": "document-artifacts",
+      "text": "A research paper and technical report describe the system. Example model outputs are included in the appendix.",
+      "expected_component_ids": [11, 20, 21]
+    }
+  ]
+}

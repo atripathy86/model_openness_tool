@@ -661,5 +661,6 @@ As of 2026-07-12:
 - Bounded documentation and PDF text now produce deterministic, line-cited `artifact_mentioned` evidence for a narrow reviewed phrase set. Mentions remain `mentioned_only` and cannot affect potential or confirmed scores.
 - Phase 4 is in progress: `mot extract-llm` uses a provider-neutral structured client with an OpenAI-compatible adapter, strict proposal schemas, exact citation validation, source/prompt/model/token provenance, and review-only evidence output.
 - `mot review-import`, `mot review-list`, and `mot review-decide` provide a local SQLite review queue with idempotent imports, immutable evidence items, and append-only override audit events.
-- The remaining Phase 4 slice is a five-document labeled evaluation set with a 95% precision and 100% accepted-citation target. Broader reviewed license recognition remains future Phase 3 depth work.
+- `mot llm-eval` runs a versioned five-case synthetic labeled set through the production schema/citation path and reports precision, recall, raw citation validity, and per-case differences. Empty output cannot pass vacuously.
+- Phase 4 implementation is feature-complete, but its exit criterion remains unmet until a configured model passes the 95% precision and 100% citation-validity gate. Broader reviewed license recognition remains future Phase 3 depth work.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

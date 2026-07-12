@@ -92,6 +92,14 @@ class WorkerResult(BaseModel):
     error: str | None = None
 
 
+class RecoveryResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    recovered_job_ids: tuple[str, ...]
+    requeued_count: int = Field(ge=0)
+    failed_count: int = Field(ge=0)
+
+
 class JobQueue:
     def __init__(
         self,
@@ -172,6 +180,53 @@ class JobQueue:
             row.updated_at = now
             session.flush()
             return _job(row)
+
+    def heartbeat(self, job_id: str, worker_id: str) -> bool:
+        now = self._clock()
+        with self._database.session() as session:
+            row = session.get(EvaluationJobRow, job_id, with_for_update=True)
+            if row is None or row.status != JobStatus.RUNNING.value or row.worker_id != worker_id:
+                return False
+            row.locked_at = now
+            row.updated_at = now
+            return True
+
+    def recover_stale(self, stale_after: timedelta) -> RecoveryResult:
+        if stale_after <= timedelta(0):
+            raise ValueError("Stale duration must be positive")
+        now = self._clock()
+        cutoff = now - stale_after
+        recovered = []
+        requeued = 0
+        failed = 0
+        with self._database.session() as session:
+            rows = session.scalars(
+                select(EvaluationJobRow)
+                .where(
+                    EvaluationJobRow.status == JobStatus.RUNNING.value,
+                    EvaluationJobRow.locked_at <= cutoff,
+                )
+                .order_by(EvaluationJobRow.locked_at)
+                .with_for_update(skip_locked=True)
+            ).all()
+            for row in rows:
+                recovered.append(row.job_id)
+                row.error = "Worker heartbeat expired; recovered stale running job"
+                row.locked_at = None
+                row.worker_id = None
+                row.updated_at = now
+                if row.attempts < row.max_attempts:
+                    row.status = JobStatus.QUEUED.value
+                    row.available_at = now
+                    requeued += 1
+                else:
+                    row.status = JobStatus.FAILED.value
+                    failed += 1
+        return RecoveryResult(
+            recovered_job_ids=tuple(recovered),
+            requeued_count=requeued,
+            failed_count=failed,
+        )
 
     def fail(self, job_id: str, error: str) -> EvaluationJob:
         now = self._clock()

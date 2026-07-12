@@ -70,3 +70,53 @@ def test_job_reaches_terminal_failure_and_validates_transitions(tmp_path: Path) 
     with pytest.raises(ValueError, match="Worker ID"):
         queue.claim(" ")
     database.dispose()
+
+
+def test_heartbeat_refreshes_lease_and_stale_recovery_requeues(tmp_path: Path) -> None:
+    now = [datetime(2026, 7, 12, tzinfo=UTC)]
+    database = _database(tmp_path / "jobs.db")
+    queue = JobQueue(database, clock=lambda: now[0], job_id_factory=lambda: "job-1")
+    queue.submit(EvaluationJobRequest(model_id="example/model", max_attempts=2))
+    claimed = queue.claim("worker-1")
+    assert claimed is not None
+
+    now[0] += timedelta(minutes=4)
+    assert queue.heartbeat(claimed.job_id, "different-worker") is False
+    assert queue.heartbeat(claimed.job_id, "worker-1") is True
+    now[0] += timedelta(minutes=4)
+
+    fresh = queue.recover_stale(timedelta(minutes=5))
+    assert fresh.recovered_job_ids == ()
+
+    now[0] += timedelta(minutes=2)
+    recovered = queue.recover_stale(timedelta(minutes=5))
+    job = queue.get(claimed.job_id)
+    assert job is not None
+    assert recovered.recovered_job_ids == ("job-1",)
+    assert recovered.requeued_count == 1
+    assert recovered.failed_count == 0
+    assert job.status == JobStatus.QUEUED
+    assert job.worker_id is None
+    assert job.error == "Worker heartbeat expired; recovered stale running job"
+    database.dispose()
+
+
+def test_stale_recovery_fails_job_with_exhausted_attempts(tmp_path: Path) -> None:
+    now = [datetime(2026, 7, 12, tzinfo=UTC)]
+    database = _database(tmp_path / "jobs.db")
+    queue = JobQueue(database, clock=lambda: now[0], job_id_factory=lambda: "job-1")
+    queue.submit(EvaluationJobRequest(model_id="example/model", max_attempts=1))
+    claimed = queue.claim("worker-1")
+    assert claimed is not None
+
+    now[0] += timedelta(hours=2)
+    recovered = queue.recover_stale(timedelta(hours=1))
+    job = queue.get(claimed.job_id)
+    assert job is not None
+    assert recovered.failed_count == 1
+    assert recovered.requeued_count == 0
+    assert job.status == JobStatus.FAILED
+    assert job.worker_id is None
+    with pytest.raises(ValueError, match="positive"):
+        queue.recover_stale(timedelta(0))
+    database.dispose()

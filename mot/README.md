@@ -221,7 +221,7 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 
 `/health` reports process health without requiring PostgreSQL. `/ready` reports ready only when `DATABASE_URL` is configured and the database probe succeeds. Versioned routes are unauthenticated when `MOT_API_BEARER_TOKEN` is unset or blank. When configured, callers must send that value as a bearer token. Health and readiness remain public.
 
-The tracked `example.env` lists Hugging Face, GitHub, OpenAI-compatible, MinerU, API-authentication, PostgreSQL, and SQLAlchemy variables. The populated `.env` is local-only and ignored by Git. Prefect is intentionally deferred; durable jobs and the worker loop will use the PostgreSQL service boundary in the next Phase 5 slice.
+The tracked `example.env` lists Hugging Face, GitHub, OpenAI-compatible, MinerU, API-authentication, log-level, PostgreSQL, and SQLAlchemy variables. The populated `.env` is local-only and ignored by Git. Prefect is intentionally deferred; durable jobs and the worker loop use the PostgreSQL service boundary.
 
 Submit a durable evaluation job, process one queued job, and inspect current state:
 
@@ -234,4 +234,11 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
   uv run --env-file .env mot job-list
 ```
 
-The API also exposes `POST /v1/jobs`, `GET /v1/jobs`, and `GET /v1/jobs/{job_id}` under the same optional bearer-authentication boundary. Workers claim queued jobs with PostgreSQL `FOR UPDATE SKIP LOCKED`, record attempts and worker identity, and retry unexpected failures with bounded exponential delays before terminal failure. Use `mot worker --loop` for continuous polling. Prefect is not required.
+Recover running jobs abandoned beyond their heartbeat lease:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run --env-file .env mot job-recover --stale-seconds 3600
+```
+
+The API also exposes `POST /v1/jobs`, `GET /v1/jobs`, and `GET /v1/jobs/{job_id}` under the same optional bearer-authentication boundary. Workers claim queued jobs with PostgreSQL `FOR UPDATE SKIP LOCKED`, record attempts and worker identity, refresh a running-job heartbeat, and retry unexpected failures with bounded exponential delays before terminal failure. Worker lifecycle events are emitted as JSON logs to standard error; set `MOT_LOG_LEVEL` to control verbosity. Each worker performs stale-job recovery at startup, and operators can run `mot job-recover` independently. Use `mot worker --loop` for continuous polling. Prefect is not required.

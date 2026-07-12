@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import socket
+import threading
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -57,6 +60,7 @@ from model_openness_tool.llm_extraction import (
     LlmEvidenceExtractor,
     OpenAiCompatibleClient,
 )
+from model_openness_tool.logging_config import configure_json_logging
 from model_openness_tool.model_yaml import load_model_yaml
 from model_openness_tool.persistence import Database
 from model_openness_tool.review_store import (
@@ -500,16 +504,47 @@ def run_worker(
         float,
         typer.Option("--poll-seconds", min=0.1, max=60.0, help="Idle loop delay."),
     ] = 2.0,
+    heartbeat_seconds: Annotated[
+        float,
+        typer.Option(
+            "--heartbeat-seconds",
+            min=1.0,
+            max=300.0,
+            help="Interval for refreshing the running-job lease.",
+        ),
+    ] = 30.0,
+    stale_seconds: Annotated[
+        float,
+        typer.Option(
+            "--stale-seconds",
+            min=2.0,
+            help="Recover running jobs whose heartbeat is older than this duration.",
+        ),
+    ] = 3600.0,
     cache_dir: Annotated[
         Path,
         typer.Option("--cache-dir", file_okay=False, help="Local Hugging Face cache."),
     ] = Path(".hf-cache"),
 ) -> None:
     """Claim and execute durable evaluation jobs without Prefect."""
+    if heartbeat_seconds >= stale_seconds:
+        raise typer.BadParameter("--heartbeat-seconds must be less than --stale-seconds")
+    configure_json_logging(os.environ.get("MOT_LOG_LEVEL", "INFO"))
+    logger = logging.getLogger("model_openness_tool.worker")
     database = Database(_required_environment("DATABASE_URL"))
     queue = JobQueue(database)
     identity = worker_id or f"{socket.gethostname()}:{os.getpid()}"
     try:
+        recovery = queue.recover_stale(timedelta(seconds=stale_seconds))
+        logger.info(
+            "worker started",
+            extra={
+                "event": "worker_started",
+                "worker_id": identity,
+                "requeued_jobs": recovery.requeued_count,
+                "failed_jobs": recovery.failed_count,
+            },
+        )
         while True:
             job = queue.claim(identity)
             if job is None:
@@ -518,11 +553,43 @@ def run_worker(
                     return
                 time.sleep(poll_seconds)
                 continue
+            logger.info(
+                "job claimed",
+                extra={
+                    "event": "job_claimed",
+                    "job_id": job.job_id,
+                    "worker_id": identity,
+                    "attempt": job.attempts,
+                },
+            )
+            stop_heartbeat = threading.Event()
+            heartbeat = threading.Thread(
+                target=_heartbeat_job,
+                args=(queue, job.job_id, identity, heartbeat_seconds, stop_heartbeat),
+                daemon=True,
+                name=f"mot-heartbeat-{job.job_id}",
+            )
+            heartbeat.start()
             try:
                 result = _execute_evaluation_job(job.request, cache_dir)
                 completed = queue.succeed(job.job_id, result.model_dump(mode="json"))
+                logger.info(
+                    "job succeeded",
+                    extra={"event": "job_succeeded", "job_id": job.job_id},
+                )
             except Exception as error:
                 completed = queue.fail(job.job_id, f"{type(error).__name__}: {error}")
+                logger.exception(
+                    "job execution failed",
+                    extra={
+                        "event": "job_failed",
+                        "job_id": job.job_id,
+                        "status": completed.status.value,
+                    },
+                )
+            finally:
+                stop_heartbeat.set()
+                heartbeat.join()
             typer.echo(
                 WorkerResult(
                     processed=True,
@@ -534,6 +601,35 @@ def run_worker(
             )
             if once:
                 return
+    finally:
+        database.dispose()
+
+
+@app.command("job-recover")
+def job_recover(
+    stale_seconds: Annotated[
+        float,
+        typer.Option(
+            "--stale-seconds",
+            min=1.0,
+            help="Recover running jobs whose heartbeat is older than this duration.",
+        ),
+    ] = 3600.0,
+) -> None:
+    """Recover abandoned running jobs using their heartbeat lease."""
+    configure_json_logging(os.environ.get("MOT_LOG_LEVEL", "INFO"))
+    database = Database(_required_environment("DATABASE_URL"))
+    try:
+        result = JobQueue(database).recover_stale(timedelta(seconds=stale_seconds))
+        logging.getLogger("model_openness_tool.worker").info(
+            "stale-job recovery completed",
+            extra={
+                "event": "stale_jobs_recovered",
+                "requeued_jobs": result.requeued_count,
+                "failed_jobs": result.failed_count,
+            },
+        )
+        typer.echo(result.model_dump_json(indent=2))
     finally:
         database.dispose()
 
@@ -831,6 +927,29 @@ def _collect_paper(paper: str) -> PaperCollectionResult | PdfCollectionResult:
             server_url=os.environ.get("MINERU_SERVER_URL", "http://127.0.0.1:30000"),
         ).collect(paper)
     return ArxivConnector(ArxivApiClient()).collect(paper)
+
+
+def _heartbeat_job(
+    queue: JobQueue,
+    job_id: str,
+    worker_id: str,
+    interval_seconds: float,
+    stop: threading.Event,
+) -> None:
+    logger = logging.getLogger("model_openness_tool.worker")
+    while not stop.wait(interval_seconds):
+        try:
+            if not queue.heartbeat(job_id, worker_id):
+                logger.warning(
+                    "job heartbeat lease was lost",
+                    extra={"event": "heartbeat_lost", "job_id": job_id},
+                )
+                return
+        except Exception:
+            logger.exception(
+                "job heartbeat failed",
+                extra={"event": "heartbeat_failed", "job_id": job_id},
+            )
 
 
 def _execute_evaluation_job(request: EvaluationJobRequest, cache_dir: Path) -> EvaluationRun:

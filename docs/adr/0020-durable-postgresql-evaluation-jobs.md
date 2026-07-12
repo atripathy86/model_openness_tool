@@ -35,5 +35,5 @@ orchestration service.
 
 Jobs survive API and worker restarts, expose observable state, and support concurrent
 workers using PostgreSQL primitives. Continuous workers still need process supervision,
-and abandoned running jobs are not yet reclaimed automatically; stale-lock recovery and
-operational metrics remain subsequent Phase 5 work.
+and abandoned running jobs require a recovery policy. ADR 0021 adds renewable heartbeat
+leases and stale-job recovery; a metrics backend remains deferred Phase 5 work.

@@ -662,5 +662,7 @@ As of 2026-07-12:
 - Phase 4 is in progress: `mot extract-llm` uses a provider-neutral structured client with an OpenAI-compatible adapter, strict proposal schemas, exact citation validation, source/prompt/model/token provenance, and review-only evidence output.
 - `mot review-import`, `mot review-list`, and `mot review-decide` provide a local SQLite review queue with idempotent imports, immutable evidence items, and append-only override audit events.
 - `mot llm-eval` runs a versioned five-case synthetic labeled set through the production schema/citation path and reports precision, recall, raw citation validity, and per-case differences. Empty output cannot pass vacuously.
-- Phase 4 implementation is feature-complete, but its exit criterion remains unmet until a configured model passes the 95% precision and 100% citation-validity gate. Broader reviewed license recognition remains future Phase 3 depth work.
+- Phase 4 is complete: the configured local model passed the initial five-case gate with 100% precision, 100% raw citation validity, and 88.9% reported recall. Broader reviewed license recognition remains future Phase 3 depth work.
+- Phase 5 is in progress: FastAPI health/readiness and catalog endpoints, optional environment-configured bearer authentication, SQLAlchemy/Alembic PostgreSQL foundations, Docker Compose, and complete example/local environment files are implemented without Prefect.
+- Durable PostgreSQL jobs, a worker loop, retries/concurrency controls, and run observability are the next Phase 5 slices.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

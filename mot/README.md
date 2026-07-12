@@ -202,3 +202,23 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 The command reads `OPENAI_BASE_URL` and optional `OPENAI_API_KEY`, uses the same strict schema and citation validator as `extract-llm`, and exits nonzero when the gate fails while still writing the complete report. The initial gate requires all five cases to complete, at least one true positive, at least 95% precision, 100% raw citation validity, and zero LLM-only status promotions. Recall is reported but is not yet a release gate.
+
+Create local configuration from the complete environment template, start PostgreSQL, and apply migrations:
+
+```bash
+cp example.env .env
+docker compose --env-file .env up -d postgres
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run --env-file .env alembic upgrade head
+```
+
+Start the FastAPI service with the local environment file:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run --env-file .env uvicorn model_openness_tool.api:app_factory --factory
+```
+
+`/health` reports process health without requiring PostgreSQL. `/ready` reports ready only when `DATABASE_URL` is configured and the database probe succeeds. Versioned routes are unauthenticated when `MOT_API_BEARER_TOKEN` is unset or blank. When configured, callers must send that value as a bearer token. Health and readiness remain public.
+
+The tracked `example.env` lists Hugging Face, GitHub, OpenAI-compatible, MinerU, API-authentication, PostgreSQL, and SQLAlchemy variables. The populated `.env` is local-only and ignored by Git. Prefect is intentionally deferred; durable jobs and the worker loop will use the PostgreSQL service boundary in the next Phase 5 slice.

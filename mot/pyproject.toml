@@ -13,13 +13,18 @@ authors = [
   { name = "atripathy86", email = "atripathy86@gmail.com" },
 ]
 dependencies = [
+  "alembic>=1.16,<2",
+  "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "huggingface-hub>=1.23,<2",
   "mineru>=3.3,<4",
   "pydantic>=2.11,<3",
   "pypdf>=6.5,<7",
   "pyyaml>=6.0,<7",
+  "psycopg[binary]>=3.2,<4",
+  "sqlalchemy>=2.0,<3",
   "typer>=0.16,<1",
+  "uvicorn>=0.35,<1",
 ]
 
 [project.scripts]
@@ -40,6 +45,10 @@ packages = ["src/model_openness_tool"]
 include = [
   "src/model_openness_tool",
   "tests",
+  "migrations",
+  "alembic.ini",
+  "docker-compose.yml",
+  "example.env",
   "README.md",
   "pyproject.toml",
 ]

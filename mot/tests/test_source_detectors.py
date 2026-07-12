@@ -10,6 +10,7 @@ from model_openness_tool.evidence import (
     GitHubSnapshot,
     HuggingFaceSnapshot,
     RepositoryFile,
+    TextArtifact,
 )
 from model_openness_tool.source_detectors import (
     detect_github_evidence,
@@ -106,5 +107,58 @@ def test_merges_linked_source_evidence_without_promoting_unknowns(
 
     assert _finding(merged, 7).availability == AvailabilityStatus.PRESENT
     assert _finding(merged, 10).availability == AvailabilityStatus.UNKNOWN
-    assert merged.detector_version == "hf+github-manifest-v2"
+    assert merged.detector_version == "hf+github-manifest-v3"
     assert len(merged.evidence) == len(github.evidence)
+
+
+def test_identifies_unambiguous_mit_license_text_for_detected_source_components(
+    catalog: FrameworkCatalog,
+) -> None:
+    snapshot = _github_snapshot().model_copy(
+        update={
+            "declared_license": None,
+            "text_artifacts": (
+                TextArtifact(
+                    path="LICENSE",
+                    content_sha256="license-hash",
+                    content=(
+                        "Permission is hereby granted, free of charge, to any person obtaining "
+                        'a copy of this software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT '
+                        "WARRANTY OF ANY KIND."
+                    ),
+                ),
+            ),
+        }
+    )
+
+    report = detect_github_evidence(snapshot, catalog)
+    licenses = [item for item in report.evidence if item.claim == EvidenceClaim.LICENSE_DECLARED]
+
+    assert {item.value for item in licenses} == {"MIT"}
+    assert {item.component_id for item in licenses} == {7, 8, 9, 16, 18, 22}
+    assert {item.path for item in licenses} == {"LICENSE"}
+
+
+def test_requires_review_when_metadata_and_license_text_conflict(
+    catalog: FrameworkCatalog,
+) -> None:
+    snapshot = _github_snapshot().model_copy(
+        update={
+            "declared_license": "Apache-2.0",
+            "text_artifacts": (
+                TextArtifact(
+                    path="LICENSE",
+                    content_sha256="license-hash",
+                    content=(
+                        "Permission is hereby granted, free of charge, to any person obtaining "
+                        'a copy of this software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT '
+                        "WARRANTY OF ANY KIND."
+                    ),
+                ),
+            ),
+        }
+    )
+
+    report = detect_github_evidence(snapshot, catalog)
+
+    assert not any(item.claim == EvidenceClaim.LICENSE_DECLARED for item in report.evidence)

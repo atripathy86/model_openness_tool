@@ -66,6 +66,16 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 
 GitHub following is opt-in. Deterministic source rules detect explicit architecture, training, inference, evaluation, preprocessing, and dependency filenames while excluding test directories. When GitHub identifies the repository license, its SPDX ID is attached only to the matched source-code components. Linked evidence can raise only the evidence-supported potential score; human review is still required before any verified classification.
 
+Inspect a repository whose root license text supplies evidence when GitHub does not report an SPDX identifier:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot collect-github https://github.com/openai/gpt-2 \
+  --output gpt2-source-license-evidence.json
+```
+
+The connector retrieves only pinned root `LICENSE`/`COPYING` text variants, capped at 128,000 bytes each. Deterministic full-text matching currently recognizes MIT, Apache-2.0, and BSD-3-Clause. Unknown, abbreviated, custom, or conflicting license text remains review-required.
+
 Collect a revision-pinned Hugging Face dataset manifest and bounded dataset-card/license files without downloading released data:
 
 ```bash

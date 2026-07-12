@@ -1,3 +1,4 @@
+import base64
 from datetime import UTC, datetime
 
 import httpx
@@ -33,8 +34,15 @@ def test_github_collection_pins_commit_and_collects_tree_metadata() -> None:
                         {"path": "src/train.py", "type": "blob", "sha": "train", "size": 50},
                         {"path": "src", "type": "tree", "sha": "folder"},
                         {"path": "README.md", "type": "blob", "sha": "readme", "size": 10},
+                        {"path": "LICENSE", "type": "blob", "sha": "license", "size": 12},
                     ],
                 },
+            )
+        if request.url.path == "/repos/example/model/git/blobs/license":
+            content = base64.b64encode(b"license text").decode()
+            return httpx.Response(
+                200,
+                json={"encoding": "base64", "content": content, "size": 12},
             )
         raise AssertionError(f"Unexpected request: {request.url}")
 
@@ -56,8 +64,11 @@ def test_github_collection_pins_commit_and_collects_tree_metadata() -> None:
     assert result.snapshot.resolved_revision == "a" * 40
     assert result.snapshot.declared_license == "MIT"
     assert result.evidence_report is not None
-    assert [file.path for file in result.snapshot.files] == ["README.md", "src/train.py"]
-    assert requests[-1].url.params["recursive"] == "1"
+    assert [file.path for file in result.snapshot.files] == ["LICENSE", "README.md", "src/train.py"]
+    assert result.snapshot.text_artifacts[0].path == "LICENSE"
+    assert result.snapshot.text_artifacts[0].content == "license text"
+    tree_request = next(request for request in requests if "/git/trees/" in request.url.path)
+    assert tree_request.url.params["recursive"] == "1"
     assert all(request.headers["authorization"] == "Bearer secret" for request in requests)
     assert "secret" not in result.model_dump_json()
 

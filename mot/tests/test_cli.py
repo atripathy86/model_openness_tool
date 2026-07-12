@@ -172,6 +172,9 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
                 truncated=False,
             )
 
+        def get_blob_text(self, owner: str, repository: str, blob_id: str, max_bytes: int) -> bytes:
+            raise AssertionError("No license blob should be requested for this fixture")
+
     class FakeDatasetClient:
         def __init__(self, token: str | None = None) -> None:
             assert token == "secret-token"

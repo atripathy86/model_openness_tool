@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,6 +20,7 @@ from model_openness_tool.evidence import (
     GitHubCollectionResult,
     GitHubSnapshot,
     RepositoryFile,
+    TextArtifact,
 )
 from model_openness_tool.links import normalize_github_repository
 from model_openness_tool.source_detectors import detect_github_evidence
@@ -51,6 +54,8 @@ class GitHubClient(Protocol):
     def resolve_commit(self, owner: str, repository: str, revision: str) -> str: ...
 
     def get_tree(self, owner: str, repository: str, revision: str) -> GitHubTree: ...
+
+    def get_blob_text(self, owner: str, repository: str, blob_id: str, max_bytes: int) -> bytes: ...
 
 
 class GitHubSourceError(RuntimeError):
@@ -137,6 +142,26 @@ class GitHubRestClient:
             truncated=bool(payload.get("truncated", False)),
         )
 
+    def get_blob_text(self, owner: str, repository: str, blob_id: str, max_bytes: int) -> bytes:
+        payload = self._get_json(f"/repos/{owner}/{repository}/git/blobs/{blob_id}")
+        if payload.get("encoding") != "base64" or not isinstance(payload.get("content"), str):
+            raise GitHubSourceError(AccessStatus.ERROR, "Invalid GitHub blob response")
+        declared_size = payload.get("size")
+        if isinstance(declared_size, int) and declared_size > max_bytes:
+            raise GitHubSourceError(
+                AccessStatus.ERROR, f"GitHub text blob exceeds the {max_bytes}-byte limit"
+            )
+        try:
+            encoded = "".join(payload["content"].split())
+            content = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise GitHubSourceError(AccessStatus.ERROR, "Invalid GitHub blob response") from error
+        if len(content) > max_bytes:
+            raise GitHubSourceError(
+                AccessStatus.ERROR, f"GitHub text blob exceeds the {max_bytes}-byte limit"
+            )
+        return content
+
     def _get_json(
         self,
         path: str,
@@ -173,11 +198,13 @@ class GitHubConnector:
         client: GitHubClient,
         *,
         max_files: int = 100_000,
+        max_license_bytes: int = 128_000,
         catalog: FrameworkCatalog | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = client
         self._max_files = max_files
+        self._max_license_bytes = max_license_bytes
         self._catalog = catalog or load_catalog()
         self._clock = clock or (lambda: datetime.now(UTC))
 
@@ -201,6 +228,7 @@ class GitHubConnector:
                     "GitHub returned a truncated repository tree",
                 )
             files = self._files(tree.entries)
+            text_artifacts = self._license_artifacts(owner, repository, files)
             snapshot_id = sha256(f"github:{metadata.identifier}:{resolved}".encode()).hexdigest()
             snapshot = GitHubSnapshot(
                 snapshot_id=snapshot_id,
@@ -214,6 +242,7 @@ class GitHubConnector:
                 archived=metadata.archived,
                 declared_license=metadata.declared_license,
                 files=files,
+                text_artifacts=text_artifacts,
             )
             return GitHubCollectionResult(
                 repository_url=source.canonical_url,
@@ -238,6 +267,38 @@ class GitHubConnector:
                 )
             files.append(RepositoryFile(path=entry.path, size=entry.size, blob_id=entry.blob_id))
         return tuple(sorted(files, key=lambda item: item.path))
+
+    def _license_artifacts(
+        self,
+        owner: str,
+        repository: str,
+        files: tuple[RepositoryFile, ...],
+    ) -> tuple[TextArtifact, ...]:
+        artifacts = []
+        for file in files:
+            if "/" in file.path or file.path.casefold() not in {
+                "license",
+                "license.md",
+                "license.txt",
+                "copying",
+                "copying.md",
+                "copying.txt",
+            }:
+                continue
+            content = self._client.get_blob_text(
+                owner, repository, file.blob_id, self._max_license_bytes
+            )
+            decoded = content.decode("utf-8", errors="replace")
+            normalized = "\n".join(line.rstrip() for line in decoded.splitlines()).strip()
+            if normalized:
+                artifacts.append(
+                    TextArtifact(
+                        path=file.path,
+                        content_sha256=sha256(normalized.encode()).hexdigest(),
+                        content=normalized,
+                    )
+                )
+        return tuple(artifacts)
 
 
 def _declared_license(value: object) -> str | None:

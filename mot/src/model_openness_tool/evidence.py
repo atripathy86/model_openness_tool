@@ -149,6 +149,7 @@ class GitHubSnapshot(BaseModel):
     archived: bool
     declared_license: str | None = None
     files: tuple[RepositoryFile, ...]
+    text_artifacts: tuple[TextArtifact, ...] = ()
     warnings: tuple[str, ...] = ()
 
 

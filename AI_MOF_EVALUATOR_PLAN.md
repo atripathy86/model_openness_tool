@@ -657,5 +657,6 @@ As of 2026-07-12:
 - `mot collect-paper` now resolves arXiv references to version-pinned, bounded Atom metadata and DOI references to content-addressed Crossref metadata without downloading PDFs. `mot evaluate --follow-papers` can merge resolved papers as Research paper evidence only.
 - `mot collect-doc` now captures bounded public text/HTML documentation as content-addressed review evidence. `mot evaluate --follow-documentation` follows normalized documentation links without automatically promoting any MOF component.
 - `mot collect-pdf` now prefers an injected MinerU remote HTTP-client backend to capture bounded, content-addressed Markdown and structured page evidence from public generic PDFs. When MinerU is unavailable, an explicit `pypdf-fallback` preserves lower-fidelity evidence and the failure warning. Generic PDFs remain neutral evidence.
-- Semantic documentation/PDF extraction and source-license text extraction are the next Phase 3 slices.
+- Pinned GitHub collection now captures bounded root license text and recognizes a deliberately small set of unambiguous standard-license texts for independently detected source components. Metadata/text conflicts remain unresolved.
+- Semantic documentation/PDF extraction and broader reviewed license recognition are the next Phase 3 slices.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

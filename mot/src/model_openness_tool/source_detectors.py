@@ -23,7 +23,7 @@ from model_openness_tool.evidence import (
     PdfEvidenceReport,
 )
 
-GITHUB_DETECTOR_VERSION = "github-manifest-v2"
+GITHUB_DETECTOR_VERSION = "github-manifest-v3"
 CODE_SUFFIXES = frozenset({".ipynb", ".py", ".sh"})
 DEPENDENCY_FILES = frozenset(
     {
@@ -42,6 +42,21 @@ RULES = {
     8: re.compile(r"^(?:generate|generation|infer|inference|predict|prediction)(?:_|$)"),
     18: re.compile(r"^(?:benchmark|eval|evaluate|evaluation)(?:_|$)"),
     16: re.compile(r"^(?:data_?process|prepare_?data|preprocess|preprocessing)(?:_|$)"),
+}
+LICENSE_TEXT_MARKERS = {
+    "Apache-2.0": (
+        "apache license",
+        "version 2.0, january 2004",
+        "http://www.apache.org/licenses/",
+    ),
+    "MIT": (
+        "permission is hereby granted, free of charge, to any person obtaining a copy",
+        'the software is provided "as is", without warranty of any kind',
+    ),
+    "BSD-3-Clause": (
+        "redistribution and use in source and binary forms, with or without modification",
+        "neither the name of the copyright holder nor the names of its contributors",
+    ),
 }
 
 
@@ -72,7 +87,14 @@ def detect_github_evidence(
             evidence.append(item)
             component_evidence.setdefault(component_id, []).append(item)
 
-        if path.name in {"license", "license.md", "license.txt"}:
+        if path.name in {
+            "license",
+            "license.md",
+            "license.txt",
+            "copying",
+            "copying.md",
+            "copying.txt",
+        }:
             evidence.append(
                 _github_evidence_item(
                     snapshot,
@@ -82,15 +104,32 @@ def detect_github_evidence(
                 )
             )
 
-    if snapshot.declared_license is not None:
+    text_license = _license_from_text(snapshot)
+    effective_license = (
+        None
+        if snapshot.declared_license is not None
+        and text_license is not None
+        and snapshot.declared_license.casefold() != text_license.casefold()
+        else snapshot.declared_license or text_license
+    )
+    if effective_license is not None:
         for component_id in sorted(component_evidence):
+            license_path = (
+                "GitHub repository metadata#license.spdx_id"
+                if snapshot.declared_license is not None
+                else next(
+                    artifact.path
+                    for artifact in snapshot.text_artifacts
+                    if _match_license_text(artifact.content) == text_license
+                )
+            )
             item = _github_evidence_item(
                 snapshot,
                 component_id,
-                "GitHub repository metadata#license.spdx_id",
+                license_path,
                 claim=EvidenceClaim.LICENSE_DECLARED,
-                value=snapshot.declared_license,
-                confidence=0.98,
+                value=effective_license,
+                confidence=0.98 if snapshot.declared_license is not None else 0.95,
             )
             evidence.append(item)
             component_evidence[component_id].append(item)
@@ -239,3 +278,22 @@ def _github_evidence_item(
         extraction_method=GITHUB_DETECTOR_VERSION,
         confidence=confidence,
     )
+
+
+def _license_from_text(snapshot: GitHubSnapshot) -> str | None:
+    matches = {
+        license_id
+        for artifact in snapshot.text_artifacts
+        if (license_id := _match_license_text(artifact.content)) is not None
+    }
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def _match_license_text(content: str) -> str | None:
+    normalized = " ".join(content.casefold().split())
+    matches = [
+        license_id
+        for license_id, markers in LICENSE_TEXT_MARKERS.items()
+        if all(marker in normalized for marker in markers)
+    ]
+    return matches[0] if len(matches) == 1 else None

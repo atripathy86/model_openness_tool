@@ -649,5 +649,6 @@ As of 2026-07-12:
 - Bounded model cards, selected configs, and license files are collected; weight presence is established from repository/LFS metadata without downloading weights.
 - Confirmed and evidence-supported potential scores are reported separately, with model-level license scope held for review.
 - The legacy `tools-py/model_scraper.py` draft-YAML workflow is documented as non-authoritative; new evaluator work uses the uv-managed `mot/` package.
-- Phase 3 linked repository, dataset, paper, identity-resolution, and deeper license-scope work is next.
+- Phase 3 is in progress: model-card links are normalized into source identities, and `mot collect-github` produces commit-pinned, metadata-only GitHub tree snapshots without cloning or executing code.
+- Source-repository component detectors and evidence merging are the next Phase 3 slice; dataset, paper, and documentation connectors follow.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

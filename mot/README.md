@@ -37,3 +37,13 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 Automated results distinguish a conservative confirmed score from an evidence-supported potential score. Model-card mentions and unknown components never enter the potential score, and ambiguous license scope prevents an automated result from being labeled verified.
+
+Model-card evidence reports also list normalized linked GitHub repositories, Hugging Face datasets/models, papers, and documentation candidates. Collect a pinned GitHub file manifest without cloning or executing the repository:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot collect-github https://github.com/openai/gpt-2 \
+  --output openai-gpt2-source.json
+```
+
+Use `GITHUB_TOKEN` for private repositories or higher API limits, or select another environment variable with `--token-env`. Tokens are never accepted as CLI values or written to reports.

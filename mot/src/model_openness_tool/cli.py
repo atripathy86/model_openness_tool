@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 from model_openness_tool import __version__
 from model_openness_tool.assessment import EvaluationRun, ProvisionalEvaluator
 from model_openness_tool.catalog import load_catalog
+from model_openness_tool.connectors.github import GitHubConnector, GitHubRestClient
 from model_openness_tool.connectors.huggingface import HuggingFaceConnector, HuggingFaceSdkClient
 from model_openness_tool.evidence import AccessStatus, CollectionResult
 from model_openness_tool.licenses import LicenseRegistry
@@ -69,6 +70,33 @@ def collect_model(
     token = os.environ.get(token_env)
     connector = _connector(cache_dir, token)
     result = connector.collect(model_id, revision)
+    _emit_json(result, output)
+    if result.access_status != AccessStatus.AVAILABLE:
+        raise typer.Exit(code=2)
+
+
+@app.command("collect-github")
+def collect_github(
+    repository_url: Annotated[
+        str,
+        typer.Argument(help="GitHub repository URL, such as https://github.com/org/repo."),
+    ],
+    revision: Annotated[
+        str | None,
+        typer.Option("--revision", help="Branch, tag, or commit to resolve and pin."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
+    ] = None,
+    token_env: Annotated[
+        str,
+        typer.Option("--token-env", help="Environment variable containing a GitHub token."),
+    ] = "GITHUB_TOKEN",
+) -> None:
+    """Collect a revision-pinned GitHub repository file manifest."""
+    connector = GitHubConnector(GitHubRestClient(token=os.environ.get(token_env)))
+    result = connector.collect(repository_url, revision)
     _emit_json(result, output)
     if result.access_status != AccessStatus.AVAILABLE:
         raise typer.Exit(code=2)

@@ -18,6 +18,7 @@ from model_openness_tool.evidence import (
     HuggingFaceSnapshot,
     RepositoryFile,
 )
+from model_openness_tool.links import extract_linked_sources
 
 DETECTOR_VERSION = "repository-files-v1"
 WEIGHT_SUFFIXES = (".safetensors", ".bin", ".pt", ".pth", ".ckpt")
@@ -127,6 +128,7 @@ def detect_repository_evidence(
         detector_version=DETECTOR_VERSION,
         evidence=tuple(evidence),
         findings=tuple(findings),
+        linked_sources=extract_linked_sources(snapshot.model_card),
     )
 
 

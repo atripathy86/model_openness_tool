@@ -24,6 +24,14 @@ class AvailabilityStatus(StrEnum):
     INACCESSIBLE = "inaccessible"
 
 
+class LinkedSourceType(StrEnum):
+    GITHUB_REPOSITORY = "github_repository"
+    HUGGINGFACE_DATASET = "huggingface_dataset"
+    HUGGINGFACE_MODEL = "huggingface_model"
+    PAPER = "paper"
+    DOCUMENTATION = "documentation"
+
+
 class EvidenceClaim(StrEnum):
     ARTIFACT_EXISTS = "artifact_exists"
     ARTIFACT_MENTIONED = "artifact_mentioned"
@@ -95,6 +103,16 @@ class ComponentFinding(BaseModel):
     rationale: str
 
 
+class LinkedSource(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_type: LinkedSourceType
+    identifier: str
+    canonical_url: str
+    discovered_in: str
+    confidence: float = Field(ge=0, le=1)
+
+
 class EvidenceReport(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -104,6 +122,7 @@ class EvidenceReport(BaseModel):
     detector_version: str = "unknown"
     evidence: tuple[EvidenceItem, ...]
     findings: tuple[ComponentFinding, ...]
+    linked_sources: tuple[LinkedSource, ...] = ()
 
 
 class CollectionResult(BaseModel):
@@ -113,3 +132,28 @@ class CollectionResult(BaseModel):
     access_status: AccessStatus
     error: str | None = None
     report: EvidenceReport | None = None
+
+
+class GitHubSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot_id: str
+    repository: str
+    source_url: str
+    requested_revision: str | None
+    resolved_revision: str
+    default_branch: str
+    retrieved_at: datetime
+    private: bool
+    archived: bool
+    files: tuple[RepositoryFile, ...]
+    warnings: tuple[str, ...] = ()
+
+
+class GitHubCollectionResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    repository_url: str
+    access_status: AccessStatus
+    error: str | None = None
+    snapshot: GitHubSnapshot | None = None

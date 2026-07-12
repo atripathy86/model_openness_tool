@@ -15,6 +15,14 @@ from pydantic import BaseModel, ConfigDict
 from model_openness_tool import __version__
 from model_openness_tool.catalog import load_catalog
 from model_openness_tool.domain import FrameworkCatalog
+from model_openness_tool.jobs import (
+    EvaluationJob,
+    EvaluationJobRequest,
+    EvaluationJobSummary,
+    JobQueue,
+    JobStatus,
+    summarize_job,
+)
 from model_openness_tool.persistence import Database
 
 
@@ -43,6 +51,12 @@ class ReadinessResponse(BaseModel):
 
     ready: bool
     database_configured: bool
+
+
+class JobListResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: tuple[EvaluationJobSummary, ...]
 
 
 def create_app(
@@ -91,6 +105,14 @@ def create_app(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+    def jobs() -> JobQueue:
+        if resolved_database is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database is not configured",
+            )
+        return JobQueue(resolved_database)
+
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status="ok", version=__version__)
@@ -109,6 +131,41 @@ def create_app(
     )
     def catalog_endpoint() -> FrameworkCatalog:
         return resolved_catalog
+
+    @app.post(
+        "/v1/jobs",
+        response_model=EvaluationJob,
+        status_code=status.HTTP_201_CREATED,
+        dependencies=[Depends(authorize)],
+    )
+    def submit_job(request: EvaluationJobRequest) -> EvaluationJob:
+        return jobs().submit(request)
+
+    @app.get(
+        "/v1/jobs",
+        response_model=JobListResponse,
+        dependencies=[Depends(authorize)],
+    )
+    def list_jobs(
+        job_status: JobStatus | None = None,
+        limit: int = 100,
+    ) -> JobListResponse:
+        if limit < 1 or limit > 500:
+            raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+        return JobListResponse(
+            items=tuple(summarize_job(job) for job in jobs().list(job_status, limit=limit))
+        )
+
+    @app.get(
+        "/v1/jobs/{job_id}",
+        response_model=EvaluationJob,
+        dependencies=[Depends(authorize)],
+    )
+    def get_job(job_id: str) -> EvaluationJob:
+        job = jobs().get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Evaluation job was not found")
+        return job
 
     return app
 

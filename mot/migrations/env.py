@@ -6,7 +6,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from model_openness_tool.persistence import Base
+from model_openness_tool.jobs import EvaluationJobRow
 
 config = context.config
 if config.config_file_name is not None:
@@ -16,7 +16,7 @@ database_url = os.environ.get("DATABASE_URL")
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 
-target_metadata = Base.metadata
+target_metadata = EvaluationJobRow.metadata
 
 
 def run_migrations_offline() -> None:

@@ -664,5 +664,6 @@ As of 2026-07-12:
 - `mot llm-eval` runs a versioned five-case synthetic labeled set through the production schema/citation path and reports precision, recall, raw citation validity, and per-case differences. Empty output cannot pass vacuously.
 - Phase 4 is complete: the configured local model passed the initial five-case gate with 100% precision, 100% raw citation validity, and 88.9% reported recall. Broader reviewed license recognition remains future Phase 3 depth work.
 - Phase 5 is in progress: FastAPI health/readiness and catalog endpoints, optional environment-configured bearer authentication, SQLAlchemy/Alembic PostgreSQL foundations, Docker Compose, and complete example/local environment files are implemented without Prefect.
-- Durable PostgreSQL jobs, a worker loop, retries/concurrency controls, and run observability are the next Phase 5 slices.
+- Durable PostgreSQL evaluation jobs now support API/CLI submission and status, transactional `FOR UPDATE SKIP LOCKED` claims, bounded exponential retries, worker identity, structured results/errors, and one-shot or continuous workers without Prefect.
+- Stale-job recovery, operational metrics/logging, retention policy, and broader batch submission are the next Phase 5 slices.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

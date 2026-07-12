@@ -1,6 +1,9 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from model_openness_tool.api import ApiSettings, create_app
+from model_openness_tool.persistence import Base, Database
 
 
 class FakeDatabase:
@@ -55,3 +58,21 @@ def test_readiness_uses_database_probe_and_disposes_engine() -> None:
 
     assert response.json() == {"ready": True, "database_configured": True}
     assert database.disposed is True
+
+
+def test_job_submission_and_status_routes_use_durable_database(tmp_path: Path) -> None:
+    database = Database(f"sqlite+pysqlite:///{tmp_path / 'api.db'}")
+    Base.metadata.create_all(database.engine)
+    app = create_app(ApiSettings(database_url="configured"), database=database)
+
+    with TestClient(app) as client:
+        submitted = client.post("/v1/jobs", json={"model_id": "example/model"})
+        job_id = submitted.json()["job_id"]
+        fetched = client.get(f"/v1/jobs/{job_id}")
+        listed = client.get("/v1/jobs", params={"job_status": "queued"})
+
+    assert submitted.status_code == 201
+    assert submitted.json()["status"] == "queued"
+    assert fetched.status_code == 200
+    assert fetched.json()["job_id"] == job_id
+    assert [item["job_id"] for item in listed.json()["items"]] == [job_id]

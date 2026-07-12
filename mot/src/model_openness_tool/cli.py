@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
+import socket
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -40,6 +43,13 @@ from model_openness_tool.evidence import (
     PdfCollectionResult,
     PdfEvidenceReport,
 )
+from model_openness_tool.jobs import (
+    EvaluationJobRequest,
+    JobQueue,
+    JobStatus,
+    WorkerResult,
+    summarize_job,
+)
 from model_openness_tool.licenses import LicenseRegistry
 from model_openness_tool.llm_evaluation import evaluate_extractor, load_evaluation_set
 from model_openness_tool.llm_extraction import (
@@ -48,6 +58,7 @@ from model_openness_tool.llm_extraction import (
     OpenAiCompatibleClient,
 )
 from model_openness_tool.model_yaml import load_model_yaml
+from model_openness_tool.persistence import Database
 from model_openness_tool.review_store import (
     ReviewDecision,
     ReviewListResult,
@@ -423,6 +434,110 @@ def review_decide(
     typer.echo(event.model_dump_json(indent=2))
 
 
+@app.command("job-submit")
+def job_submit(
+    model_id: Annotated[str, typer.Argument(help="Hugging Face model ID.")],
+    revision: Annotated[
+        str | None,
+        typer.Option("--revision", help="Optional branch, tag, or commit to pin."),
+    ] = None,
+    max_attempts: Annotated[
+        int,
+        typer.Option("--max-attempts", min=1, max=10, help="Maximum worker attempts."),
+    ] = 3,
+) -> None:
+    """Submit a durable PostgreSQL evaluation job."""
+    database = Database(_required_environment("DATABASE_URL"))
+    try:
+        job = JobQueue(database).submit(
+            EvaluationJobRequest(
+                model_id=model_id,
+                revision=revision,
+                max_attempts=max_attempts,
+            )
+        )
+        typer.echo(job.model_dump_json(indent=2))
+    finally:
+        database.dispose()
+
+
+@app.command("job-list")
+def job_list(
+    status: Annotated[
+        JobStatus | None,
+        typer.Option("--status", help="Filter by durable job status."),
+    ] = None,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, max=500, help="Maximum jobs to return."),
+    ] = 100,
+) -> None:
+    """List durable PostgreSQL evaluation jobs."""
+    database = Database(_required_environment("DATABASE_URL"))
+    try:
+        jobs = JobQueue(database).list(status, limit=limit)
+        typer.echo(
+            json.dumps(
+                [summarize_job(job).model_dump(mode="json") for job in jobs],
+                indent=2,
+            )
+        )
+    finally:
+        database.dispose()
+
+
+@app.command("worker")
+def run_worker(
+    once: Annotated[
+        bool,
+        typer.Option("--once/--loop", help="Process at most one job or poll continuously."),
+    ] = True,
+    worker_id: Annotated[
+        str | None,
+        typer.Option("--worker-id", help="Worker identity stored on claimed jobs."),
+    ] = None,
+    poll_seconds: Annotated[
+        float,
+        typer.Option("--poll-seconds", min=0.1, max=60.0, help="Idle loop delay."),
+    ] = 2.0,
+    cache_dir: Annotated[
+        Path,
+        typer.Option("--cache-dir", file_okay=False, help="Local Hugging Face cache."),
+    ] = Path(".hf-cache"),
+) -> None:
+    """Claim and execute durable evaluation jobs without Prefect."""
+    database = Database(_required_environment("DATABASE_URL"))
+    queue = JobQueue(database)
+    identity = worker_id or f"{socket.gethostname()}:{os.getpid()}"
+    try:
+        while True:
+            job = queue.claim(identity)
+            if job is None:
+                if once:
+                    typer.echo(WorkerResult(processed=False).model_dump_json(indent=2))
+                    return
+                time.sleep(poll_seconds)
+                continue
+            try:
+                result = _execute_evaluation_job(job.request, cache_dir)
+                completed = queue.succeed(job.job_id, result.model_dump(mode="json"))
+            except Exception as error:
+                completed = queue.fail(job.job_id, f"{type(error).__name__}: {error}")
+            typer.echo(
+                WorkerResult(
+                    processed=True,
+                    job_id=completed.job_id,
+                    status=completed.status,
+                    attempts=completed.attempts,
+                    error=completed.error,
+                ).model_dump_json(indent=2)
+            )
+            if once:
+                return
+    finally:
+        database.dispose()
+
+
 @app.command("assess")
 def assess_evidence(
     evidence_file: Annotated[
@@ -718,6 +833,20 @@ def _collect_paper(paper: str) -> PaperCollectionResult | PdfCollectionResult:
     return ArxivConnector(ArxivApiClient()).collect(paper)
 
 
+def _execute_evaluation_job(request: EvaluationJobRequest, cache_dir: Path) -> EvaluationRun:
+    collection = _connector(cache_dir, os.environ.get("HF_TOKEN")).collect(
+        request.model_id,
+        request.revision,
+    )
+    assessment = None
+    if collection.report is not None:
+        root = find_repository_root()
+        assessment = ProvisionalEvaluator(load_catalog(), _license_registry(root)).assess(
+            collection.report
+        )
+    return EvaluationRun(collection=collection, assessment=assessment)
+
+
 def _license_registry(root: Path) -> LicenseRegistry:
     return LicenseRegistry.from_mot_files(
         root / "web/modules/mof/licenses.json",
@@ -732,3 +861,10 @@ def _emit_json(value: BaseModel, output: Path | None) -> None:
         return
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(f"{serialized}\n", encoding="utf-8")
+
+
+def _required_environment(name: str) -> str:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        raise typer.BadParameter(f"Environment variable {name} is required")
+    return value.strip()

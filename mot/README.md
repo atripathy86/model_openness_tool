@@ -153,3 +153,13 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 Documentation following is opt-in and follows at most three unique pages by default, with a hard CLI limit of ten. The connector accepts bounded public HTTP(S) text, Markdown, and HTML, validates redirects, blocks local or non-public literal addresses, strips active HTML content, and identifies the captured revision by its content hash. A retrievable generic page is retained as review evidence but does not automatically satisfy any MOF component.
+
+Collect documentation with deterministic, cited artifact mentions:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot collect-doc https://huggingface.co/docs/transformers/training \
+  --output transformers-training-documentation-evidence.json
+```
+
+Documentation and PDF text can emit line-cited `artifact_mentioned` evidence for explicit phrases such as training code, preprocessing pipeline, training dataset, checkpoints, and evaluation results. These findings remain `mentioned_only`: they do not prove that an artifact is released, do not enter the potential score, and cannot satisfy a MOF component.

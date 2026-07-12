@@ -4,7 +4,7 @@ from model_openness_tool.connectors.documentation import (
     DocumentationConnector,
     DocumentResponse,
 )
-from model_openness_tool.evidence import AccessStatus, AvailabilityStatus
+from model_openness_tool.evidence import AccessStatus, AvailabilityStatus, EvidenceClaim
 
 
 class FakeDocumentationClient:
@@ -97,3 +97,28 @@ def test_rejects_invalid_or_nonstandard_url_authorities() -> None:
     assert invalid_port.error == "Unsafe documentation URL authority"
     assert embedded_credentials.error == "Unsafe documentation URL authority"
     assert client.requests == []
+
+
+def test_document_mentions_remain_mentioned_only() -> None:
+    url = "https://docs.example.com/training"
+    result = DocumentationConnector(
+        FakeDocumentationClient(
+            {
+                url: DocumentResponse(
+                    status_code=200,
+                    content_type="text/markdown",
+                    content=b"The training code is available elsewhere.",
+                )
+            }
+        )
+    ).collect(url)
+
+    assert result.evidence_report is not None
+    training = next(
+        finding for finding in result.evidence_report.findings if finding.component_id == 7
+    )
+    assert training.availability == AvailabilityStatus.MENTIONED_ONLY
+    assert any(
+        item.claim == EvidenceClaim.ARTIFACT_MENTIONED and item.component_id == 7
+        for item in result.evidence_report.evidence
+    )

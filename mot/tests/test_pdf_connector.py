@@ -220,3 +220,35 @@ def test_falls_back_to_bounded_pypdf_and_records_reduced_fidelity(
     assert result.backend == "pypdf-fallback"
     assert result.markdown == "Fallback PDF text"
     assert "VLM server unavailable" in result.warnings[0]
+
+
+def test_pdf_semantic_claims_remain_mentioned_only() -> None:
+    url = "https://example.com/report.pdf"
+    result = PdfConnector(
+        FakePdfClient(
+            {
+                url: DocumentResponse(
+                    status_code=200,
+                    content_type="application/pdf",
+                    content=b"%PDF mocked",
+                )
+            }
+        ),
+        FakeMinerUExtractor(
+            MinerUExtraction(
+                "# Evaluation results\n\nThe training dataset is described in the paper.",
+                1,
+                1,
+                "3.4.4",
+                "vlm-http-client",
+            )
+        ),
+    ).collect(url)
+
+    assert result.evidence_report is not None
+    mentioned = {
+        finding.component_id
+        for finding in result.evidence_report.findings
+        if finding.availability == AvailabilityStatus.MENTIONED_ONLY
+    }
+    assert mentioned == {12, 15, 21}

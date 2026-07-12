@@ -14,8 +14,9 @@ from model_openness_tool.evidence import (
     PdfEvidenceReport,
     PdfSnapshot,
 )
+from model_openness_tool.semantic_detectors import extract_semantic_mentions
 
-PDF_DETECTOR_VERSION = "bounded-pdf-v1"
+PDF_DETECTOR_VERSION = "bounded-pdf-v2"
 
 
 def detect_pdf_evidence(snapshot: PdfSnapshot, catalog: FrameworkCatalog) -> PdfEvidenceReport:
@@ -28,7 +29,7 @@ def detect_pdf_evidence(snapshot: PdfSnapshot, catalog: FrameworkCatalog) -> Pdf
         sort_keys=True,
         separators=(",", ":"),
     )
-    evidence = EvidenceItem(
+    existence = EvidenceItem(
         evidence_id=sha256(identity.encode()).hexdigest(),
         component_id=None,
         claim=EvidenceClaim.ARTIFACT_EXISTS,
@@ -39,15 +40,40 @@ def detect_pdf_evidence(snapshot: PdfSnapshot, catalog: FrameworkCatalog) -> Pdf
         extraction_method=PDF_DETECTOR_VERSION,
         confidence=0.99,
     )
+    mentions = extract_semantic_mentions(
+        snapshot.text.content,
+        snapshot_id=snapshot.snapshot_id,
+        source_url=snapshot.final_url,
+        revision=snapshot.resolved_revision,
+        path=snapshot.text.path,
+        extraction_method=PDF_DETECTOR_VERSION,
+    )
+    component_evidence = {item.component_id: item for item in mentions}
     findings = tuple(
         ComponentFinding(
             component_id=component.id,
             component_name=component.name,
-            availability=AvailabilityStatus.UNKNOWN,
-            confidence=0.0,
+            availability=(
+                AvailabilityStatus.MENTIONED_ONLY
+                if component.id in component_evidence
+                else AvailabilityStatus.UNKNOWN
+            ),
+            confidence=(
+                component_evidence[component.id].confidence
+                if component.id in component_evidence
+                else 0.0
+            ),
+            evidence_ids=(
+                (component_evidence[component.id].evidence_id,)
+                if component.id in component_evidence
+                else ()
+            ),
             rationale=(
-                "The PDF is retrievable and has extractable text, but no deterministic rule "
-                "proves that it is this specific MOF artifact."
+                "The PDF text explicitly mentions this artifact, but does not prove that the "
+                "artifact is released."
+                if component.id in component_evidence
+                else "The PDF is retrievable and has extractable text, but no deterministic "
+                "rule proves that it is this specific MOF artifact."
             ),
         )
         for component in catalog.components
@@ -57,6 +83,6 @@ def detect_pdf_evidence(snapshot: PdfSnapshot, catalog: FrameworkCatalog) -> Pdf
         catalog_version=catalog.catalog_version,
         catalog_sha256=catalog.catalog_sha256,
         detector_version=PDF_DETECTOR_VERSION,
-        evidence=(evidence,),
+        evidence=(existence, *mentions),
         findings=findings,
     )

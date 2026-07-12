@@ -14,8 +14,9 @@ from model_openness_tool.evidence import (
     EvidenceClaim,
     EvidenceItem,
 )
+from model_openness_tool.semantic_detectors import extract_semantic_mentions
 
-DOCUMENTATION_DETECTOR_VERSION = "bounded-document-v1"
+DOCUMENTATION_DETECTOR_VERSION = "bounded-document-v2"
 
 
 def detect_documentation_evidence(
@@ -31,7 +32,7 @@ def detect_documentation_evidence(
         sort_keys=True,
         separators=(",", ":"),
     )
-    evidence = EvidenceItem(
+    existence = EvidenceItem(
         evidence_id=sha256(identity.encode()).hexdigest(),
         component_id=None,
         claim=EvidenceClaim.ARTIFACT_EXISTS,
@@ -42,14 +43,39 @@ def detect_documentation_evidence(
         extraction_method=DOCUMENTATION_DETECTOR_VERSION,
         confidence=0.99,
     )
+    mentions = extract_semantic_mentions(
+        snapshot.text.content,
+        snapshot_id=snapshot.snapshot_id,
+        source_url=snapshot.final_url,
+        revision=snapshot.resolved_revision,
+        path=snapshot.text.path,
+        extraction_method=DOCUMENTATION_DETECTOR_VERSION,
+    )
+    component_evidence = {item.component_id: item for item in mentions}
     findings = tuple(
         ComponentFinding(
             component_id=component.id,
             component_name=component.name,
-            availability=AvailabilityStatus.UNKNOWN,
-            confidence=0.0,
+            availability=(
+                AvailabilityStatus.MENTIONED_ONLY
+                if component.id in component_evidence
+                else AvailabilityStatus.UNKNOWN
+            ),
+            confidence=(
+                component_evidence[component.id].confidence
+                if component.id in component_evidence
+                else 0.0
+            ),
+            evidence_ids=(
+                (component_evidence[component.id].evidence_id,)
+                if component.id in component_evidence
+                else ()
+            ),
             rationale=(
-                "The documentation page is retrievable, but no deterministic rule proves "
+                "The documentation text explicitly mentions this artifact, but does not prove "
+                "that the artifact is released."
+                if component.id in component_evidence
+                else "The documentation page is retrievable, but no deterministic rule proves "
                 "that it is this specific MOF artifact."
             ),
         )
@@ -60,6 +86,6 @@ def detect_documentation_evidence(
         catalog_version=catalog.catalog_version,
         catalog_sha256=catalog.catalog_sha256,
         detector_version=DOCUMENTATION_DETECTOR_VERSION,
-        evidence=(evidence,),
+        evidence=(existence, *mentions),
         findings=findings,
     )

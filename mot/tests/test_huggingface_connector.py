@@ -86,6 +86,7 @@ See https://arxiv.org/abs/1234.5678 and our benchmark results.
             pipeline_tag="text-generation",
             tags=("transformers",),
             declared_license="apache-2.0",
+            referenced_datasets=("openai/gsm8k",),
         ),
         files=(
             HubFileMetadata("model.safetensors", 1000, "weight", "b" * 64, 1000),
@@ -133,6 +134,7 @@ See https://arxiv.org/abs/1234.5678 and our benchmark results.
     assert len(license_evidence) == 1
     assert license_evidence[0].value == "apache-2.0"
     assert any(item.claim == EvidenceClaim.LICENSE_FILE_EXISTS for item in result.report.evidence)
+    assert any(source.identifier == "openai/gsm8k" for source in result.report.linked_sources)
 
 
 def test_collect_does_not_download_oversized_model_card(tmp_path: Path) -> None:

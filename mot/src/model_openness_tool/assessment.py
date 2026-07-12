@@ -13,6 +13,7 @@ from model_openness_tool.evidence import (
     AvailabilityStatus,
     CollectionResult,
     ComponentFinding,
+    DatasetCollectionResult,
     EvidenceClaim,
     EvidenceReport,
     GitHubCollectionResult,
@@ -46,6 +47,7 @@ class LicenseIdentityStatus(StrEnum):
 
 class LicenseApplicabilityStatus(StrEnum):
     AMBIGUOUS = "ambiguous"
+    COMPONENT_SPECIFIC = "component_specific"
     NOT_EVALUATED = "not_evaluated"
 
 
@@ -121,6 +123,7 @@ class EvaluationRun(BaseModel):
 
     collection: CollectionResult
     linked_github: tuple[GitHubCollectionResult, ...] = ()
+    linked_datasets: tuple[DatasetCollectionResult, ...] = ()
     assessment: ProvisionalAssessment | None = None
 
 
@@ -144,18 +147,21 @@ class ProvisionalEvaluator:
 
         findings = {finding.component_id: finding for finding in report.findings}
         decisions = tuple(
-            self._decision(
-                finding=findings.get(component.id)
-                or ComponentFinding(
-                    component_id=component.id,
-                    component_name=component.name,
-                    availability=AvailabilityStatus.UNKNOWN,
-                    confidence=0.0,
-                    rationale="The evidence report has no finding for this catalog component.",
+            self._decision_from_report(
+                report=report,
+                finding=(
+                    findings.get(component.id)
+                    or ComponentFinding(
+                        component_id=component.id,
+                        component_name=component.name,
+                        availability=AvailabilityStatus.UNKNOWN,
+                        confidence=0.0,
+                        rationale="The evidence report has no finding for this catalog component.",
+                    )
                 ),
-                declared_license=declared_license,
-                normalized_license=normalized_license,
-                identity=identity,
+                global_declared_license=declared_license,
+                global_normalized_license=normalized_license,
+                global_identity=identity,
             )
             for component in self.catalog.components
         )
@@ -168,8 +174,8 @@ class ProvisionalEvaluator:
             decision.component_id
             for decision in decisions
             if decision.availability == AvailabilityStatus.PRESENT
-            and normalized_license is not None
-            and self.licenses.is_open(normalized_license)
+            and decision.normalized_license is not None
+            and self.licenses.is_open(decision.normalized_license)
         )
         global_licenses: dict[str, str | None] = (
             {"distribution": normalized_license} if normalized_license is not None else {}
@@ -179,6 +185,11 @@ class ProvisionalEvaluator:
                 name=report.snapshot.model_id,
                 included_component_ids=confirmed_ids,
                 global_licenses=global_licenses,
+                component_licenses={
+                    decision.component_id: decision.normalized_license
+                    for decision in decisions
+                    if decision.component_id in confirmed_ids
+                },
             )
         )
         potential = self.scorer.score(
@@ -186,6 +197,11 @@ class ProvisionalEvaluator:
                 name=report.snapshot.model_id,
                 included_component_ids=potential_ids,
                 global_licenses=global_licenses,
+                component_licenses={
+                    decision.component_id: decision.normalized_license
+                    for decision in decisions
+                    if decision.component_id in potential_ids
+                },
             )
         )
         license_evidence_ids = tuple(
@@ -228,6 +244,62 @@ class ProvisionalEvaluator:
             warnings=tuple(warnings),
         )
 
+    def _decision_from_report(
+        self,
+        *,
+        report: EvidenceReport,
+        finding: ComponentFinding,
+        global_declared_license: str | None,
+        global_normalized_license: str | None,
+        global_identity: LicenseIdentityStatus,
+    ) -> ComponentDecision:
+        declared_items = [
+            item
+            for item in report.evidence
+            if item.component_id == finding.component_id
+            and item.claim == EvidenceClaim.LICENSE_DECLARED
+        ]
+        license_items = [
+            item
+            for item in report.evidence
+            if item.component_id == finding.component_id
+            and item.claim in {EvidenceClaim.LICENSE_DECLARED, EvidenceClaim.LICENSE_FILE_EXISTS}
+        ]
+        declared_values = tuple(dict.fromkeys(item.value for item in declared_items))
+        declared_license: str | None
+        normalized_license: str | None
+        if len(declared_values) == 1:
+            declared_license = declared_values[0]
+            normalized_license = self.licenses.normalize(declared_license)
+            identity = (
+                LicenseIdentityStatus.RECOGNIZED
+                if normalized_license is not None
+                else LicenseIdentityStatus.CUSTOM_OR_UNKNOWN
+            )
+            applicability = LicenseApplicabilityStatus.COMPONENT_SPECIFIC
+        elif len(declared_values) > 1:
+            declared_license = "; ".join(declared_values)
+            normalized_license = None
+            identity = LicenseIdentityStatus.CUSTOM_OR_UNKNOWN
+            applicability = LicenseApplicabilityStatus.COMPONENT_SPECIFIC
+        else:
+            declared_license = global_declared_license
+            normalized_license = global_normalized_license
+            identity = global_identity
+            applicability = (
+                LicenseApplicabilityStatus.AMBIGUOUS
+                if declared_license is not None
+                else LicenseApplicabilityStatus.NOT_EVALUATED
+            )
+        return self._decision(
+            finding=finding,
+            declared_license=declared_license,
+            normalized_license=normalized_license,
+            identity=identity,
+            applicability=applicability,
+            license_evidence_ids=tuple(item.evidence_id for item in license_items),
+        )
+
     def _decision(
         self,
         *,
@@ -235,8 +307,11 @@ class ProvisionalEvaluator:
         declared_license: str | None,
         normalized_license: str | None,
         identity: LicenseIdentityStatus,
+        applicability: LicenseApplicabilityStatus,
+        license_evidence_ids: tuple[str, ...],
     ) -> ComponentDecision:
         component = self.catalog.component(finding.component_id)
+        evidence_ids = tuple(dict.fromkeys([*finding.evidence_ids, *license_evidence_ids]))
         if finding.availability == AvailabilityStatus.ABSENT:
             return ComponentDecision(
                 component_id=component.id,
@@ -249,7 +324,7 @@ class ProvisionalEvaluator:
                 declared_license=declared_license,
                 normalized_license=normalized_license,
                 type_appropriate=None,
-                evidence_ids=finding.evidence_ids,
+                evidence_ids=evidence_ids,
                 rationale="The artifact is absent, so the MOF component is not satisfied.",
             )
 
@@ -275,16 +350,12 @@ class ProvisionalEvaluator:
             availability=finding.availability,
             satisfaction=SatisfactionStatus.REVIEW_REQUIRED,
             license_identity=identity,
-            license_applicability=(
-                LicenseApplicabilityStatus.AMBIGUOUS
-                if declared_license is not None
-                else LicenseApplicabilityStatus.NOT_EVALUATED
-            ),
+            license_applicability=applicability,
             license_decision=license_decision,
             declared_license=declared_license,
             normalized_license=normalized_license,
             type_appropriate=type_appropriate,
-            evidence_ids=finding.evidence_ids,
+            evidence_ids=evidence_ids,
             rationale=rationale,
         )
 

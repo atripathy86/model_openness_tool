@@ -12,6 +12,7 @@ from model_openness_tool.domain import FrameworkCatalog
 from model_openness_tool.evidence import (
     AvailabilityStatus,
     ComponentFinding,
+    DatasetEvidenceReport,
     EvidenceClaim,
     EvidenceItem,
     EvidenceReport,
@@ -115,7 +116,7 @@ def detect_github_evidence(
 
 def merge_evidence_reports(
     primary: EvidenceReport,
-    linked: tuple[GitHubEvidenceReport, ...],
+    linked: tuple[GitHubEvidenceReport | DatasetEvidenceReport, ...],
 ) -> EvidenceReport:
     for report in linked:
         if report.catalog_sha256 != primary.catalog_sha256:

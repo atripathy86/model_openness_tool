@@ -5,6 +5,7 @@ import pytest
 from model_openness_tool.assessment import (
     AssessmentKind,
     ComponentDecision,
+    LicenseApplicabilityStatus,
     LicenseDecisionStatus,
     LicenseIdentityStatus,
     ProvisionalAssessment,
@@ -45,7 +46,7 @@ def _report(
         )
         for component in catalog.components
     )
-    evidence = ()
+    evidence: tuple[EvidenceItem, ...] = ()
     if declared_license is not None:
         evidence = (
             EvidenceItem(
@@ -126,3 +127,49 @@ def test_missing_license_does_not_inflate_potential_score(
     assert assessment.normalized_license is None
     assert assessment.evidence_supported_potential.progress == {1: 0.0, 2: 0.0, 3: 0.0}
     assert assessment.evidence_supported_potential.classification == 0
+
+
+def test_component_specific_dataset_license_overrides_ambiguous_model_license(
+    catalog: FrameworkCatalog,
+    license_registry: LicenseRegistry,
+) -> None:
+    report = _report(catalog)
+    report = report.model_copy(
+        update={
+            "evidence": (
+                *report.evidence,
+                EvidenceItem(
+                    evidence_id="dataset-license",
+                    component_id=15,
+                    claim=EvidenceClaim.LICENSE_DECLARED,
+                    value="cc-by-4.0",
+                    source_url="https://huggingface.co/datasets/example/data/blob/d/README.md",
+                    revision="d" * 40,
+                    path="README.md#metadata",
+                    extraction_method="fixture",
+                    confidence=0.98,
+                ),
+            ),
+            "findings": tuple(
+                finding.model_copy(
+                    update={
+                        "availability": AvailabilityStatus.PRESENT,
+                        "confidence": 0.98,
+                        "evidence_ids": ("dataset-artifact",),
+                    }
+                )
+                if finding.component_id == 15
+                else finding
+                for finding in report.findings
+            ),
+        }
+    )
+
+    assessment = ProvisionalEvaluator(catalog, license_registry).assess(report)
+    decision = _decision(assessment, 15)
+
+    assert decision.declared_license == "cc-by-4.0"
+    assert decision.normalized_license == "CC-BY-4.0"
+    assert decision.license_applicability == LicenseApplicabilityStatus.COMPONENT_SPECIFIC
+    assert decision.license_decision == LicenseDecisionStatus.OPEN_NOT_TYPE_APPROPRIATE
+    assert decision.satisfaction == SatisfactionStatus.REVIEW_REQUIRED

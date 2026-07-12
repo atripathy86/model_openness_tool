@@ -39,6 +39,7 @@ class HubModelMetadata:
     pipeline_tag: str | None
     tags: tuple[str, ...]
     declared_license: str | None
+    referenced_datasets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,16 @@ class HuggingFaceSdkClient:
             getattr(info.card_data, "license", None) if info.card_data is not None else None
         )
         declared_license = raw_license if isinstance(raw_license, str) else None
+        raw_datasets: object = (
+            getattr(info.card_data, "datasets", None) if info.card_data is not None else None
+        )
+        referenced_datasets: tuple[str, ...]
+        if isinstance(raw_datasets, str):
+            referenced_datasets = (raw_datasets,)
+        elif isinstance(raw_datasets, list):
+            referenced_datasets = tuple(item for item in raw_datasets if isinstance(item, str))
+        else:
+            referenced_datasets = ()
         return HubModelMetadata(
             model_id=info.id,
             revision=info.sha,
@@ -108,6 +119,7 @@ class HuggingFaceSdkClient:
             pipeline_tag=info.pipeline_tag,
             tags=tuple(sorted(info.tags or [])),
             declared_license=declared_license,
+            referenced_datasets=referenced_datasets,
         )
 
     def list_files(self, model_id: str, revision: str) -> Iterable[HubFileMetadata]:
@@ -209,6 +221,7 @@ class HuggingFaceConnector:
                 pipeline_tag=metadata.pipeline_tag,
                 tags=metadata.tags,
                 declared_license=metadata.declared_license,
+                referenced_datasets=metadata.referenced_datasets,
                 files=files,
                 model_card=model_card,
                 text_artifacts=text_artifacts,

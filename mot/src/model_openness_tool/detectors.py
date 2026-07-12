@@ -18,7 +18,7 @@ from model_openness_tool.evidence import (
     HuggingFaceSnapshot,
     RepositoryFile,
 )
-from model_openness_tool.links import extract_linked_sources
+from model_openness_tool.links import dataset_sources_from_ids, extract_linked_sources
 
 DETECTOR_VERSION = "repository-files-v1"
 WEIGHT_SUFFIXES = (".safetensors", ".bin", ".pt", ".pth", ".ckpt")
@@ -73,6 +73,18 @@ def detect_repository_evidence(
             )
         )
 
+    for dataset_id in snapshot.referenced_datasets:
+        item = _evidence_item(
+            snapshot=snapshot,
+            component_id=15,
+            claim=EvidenceClaim.ARTIFACT_MENTIONED,
+            value=dataset_id,
+            path="README.md#metadata.datasets",
+            confidence=0.9,
+        )
+        evidence.append(item)
+        component_evidence.setdefault(15, []).append(item)
+
     for file in snapshot.files:
         if file.path.casefold() not in {"license", "license.md", "license.txt"}:
             continue
@@ -121,6 +133,16 @@ def detect_repository_evidence(
             )
         )
 
+    linked_sources = {
+        (source.source_type, source.identifier.casefold()): source
+        for source in (
+            *extract_linked_sources(snapshot.model_card),
+            *dataset_sources_from_ids(
+                snapshot.referenced_datasets,
+                discovered_in="README.md#metadata.datasets",
+            ),
+        )
+    }
     return EvidenceReport(
         snapshot=snapshot,
         catalog_version=catalog.catalog_version,
@@ -128,7 +150,9 @@ def detect_repository_evidence(
         detector_version=DETECTOR_VERSION,
         evidence=tuple(evidence),
         findings=tuple(findings),
-        linked_sources=extract_linked_sources(snapshot.model_card),
+        linked_sources=tuple(
+            sorted(linked_sources.values(), key=lambda item: (item.source_type, item.identifier))
+        ),
     )
 
 

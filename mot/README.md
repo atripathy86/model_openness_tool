@@ -57,3 +57,22 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 GitHub following is opt-in. Deterministic source rules detect explicit architecture, training, inference, evaluation, preprocessing, and dependency filenames while excluding test directories. Linked evidence can raise only the evidence-supported potential score; license scope still requires review before any verified classification.
+
+Collect a revision-pinned Hugging Face dataset manifest and bounded dataset-card/license files without downloading released data:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot collect-dataset https://huggingface.co/datasets/openai/gsm8k \
+  --output gsm8k-dataset-evidence.json
+```
+
+Structured dataset references and dataset links discovered in a model card can be followed during evaluation:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot evaluate distilbert/distilbert-base-uncased-finetuned-sst-2-english \
+  --repository-root .. --follow-datasets \
+  --output distilbert-linked-evaluation.json
+```
+
+Dataset following is opt-in and follows at most three unique datasets by default, with a hard CLI limit of ten. Dataset manifests can prove that released data and a data card exist, while exact training use, provenance, preprocessing, and license applicability remain review questions. When several linked datasets declare different licenses, the combined component license is reported as ambiguous rather than selecting one automatically.

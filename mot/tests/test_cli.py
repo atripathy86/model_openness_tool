@@ -12,6 +12,10 @@ from model_openness_tool.connectors.github import (
     GitHubTreeEntry,
 )
 from model_openness_tool.connectors.huggingface import HubFileMetadata, HubModelMetadata
+from model_openness_tool.connectors.huggingface_dataset import (
+    DatasetFileMetadata,
+    DatasetMetadata,
+)
 
 runner = CliRunner()
 
@@ -54,7 +58,10 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
 ) -> None:
     card = tmp_path / "README.md"
     card.write_text(
-        "# Example\n\nSource: https://github.com/example/model",
+        (
+            "# Example\n\nSource: https://github.com/example/model\n\n"
+            "Data: https://huggingface.co/datasets/example/data"
+        ),
         encoding="utf-8",
     )
     captured_token: list[str | None] = []
@@ -107,8 +114,35 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
                 truncated=False,
             )
 
+    class FakeDatasetClient:
+        def __init__(self, token: str | None = None) -> None:
+            assert token == "secret-token"
+
+        def get_dataset(self, dataset_id: str, revision: str | None) -> DatasetMetadata:
+            return DatasetMetadata(
+                dataset_id=dataset_id,
+                revision="d" * 40,
+                private=False,
+                gated=False,
+                tags=(),
+                declared_licenses=("cc-by-4.0",),
+            )
+
+        def list_files(self, dataset_id: str, revision: str) -> Iterable[DatasetFileMetadata]:
+            return (DatasetFileMetadata("data/train.parquet", 100, "data"),)
+
+        def download_file(
+            self,
+            dataset_id: str,
+            revision: str,
+            path: str,
+            cache_dir: Path,
+        ) -> Path:
+            return card
+
     monkeypatch.setattr(cli, "HuggingFaceSdkClient", FakeSdkClient)
     monkeypatch.setattr(cli, "GitHubRestClient", FakeGitHubClient)
+    monkeypatch.setattr(cli, "HuggingFaceDatasetSdkClient", FakeDatasetClient)
     output = tmp_path / "result.json"
     result = runner.invoke(
         cli.app,
@@ -167,6 +201,7 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
             "--follow-github",
             "--github-token-env",
             "TEST_GITHUB_TOKEN",
+            "--follow-datasets",
         ],
         env={
             "TEST_HF_TOKEN": "secret-token",
@@ -178,5 +213,7 @@ def test_collect_command_reads_token_from_environment_and_writes_json(
     evaluation = json.loads(evaluation_output.read_text(encoding="utf-8"))
     assert evaluation["collection"]["access_status"] == "available"
     assert len(evaluation["linked_github"]) == 1
+    assert len(evaluation["linked_datasets"]) == 1
     assert evaluation["linked_github"][0]["snapshot"]["resolved_revision"] == "b" * 40
+    assert evaluation["linked_datasets"][0]["snapshot"]["resolved_revision"] == "d" * 40
     assert evaluation["assessment"]["kind"] == "provisional"

@@ -71,6 +71,7 @@ class HuggingFaceSnapshot(BaseModel):
     pipeline_tag: str | None
     tags: tuple[str, ...]
     declared_license: str | None
+    referenced_datasets: tuple[str, ...] = ()
     files: tuple[RepositoryFile, ...]
     model_card: TextArtifact | None = None
     text_artifacts: tuple[TextArtifact, ...] = ()
@@ -169,3 +170,42 @@ class GitHubCollectionResult(BaseModel):
     error: str | None = None
     snapshot: GitHubSnapshot | None = None
     evidence_report: GitHubEvidenceReport | None = None
+
+
+class DatasetSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot_id: str
+    dataset_id: str
+    source_url: str
+    requested_revision: str | None
+    resolved_revision: str
+    retrieved_at: datetime
+    private: bool
+    gated: bool
+    tags: tuple[str, ...]
+    declared_licenses: tuple[str, ...]
+    files: tuple[RepositoryFile, ...]
+    text_artifacts: tuple[TextArtifact, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
+class DatasetEvidenceReport(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    snapshot: DatasetSnapshot
+    catalog_version: str
+    catalog_sha256: str
+    detector_version: str
+    evidence: tuple[EvidenceItem, ...]
+    findings: tuple[ComponentFinding, ...]
+
+
+class DatasetCollectionResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    dataset_url: str
+    access_status: AccessStatus
+    error: str | None = None
+    snapshot: DatasetSnapshot | None = None
+    evidence_report: DatasetEvidenceReport | None = None

@@ -14,9 +14,15 @@ from model_openness_tool.assessment import EvaluationRun, ProvisionalEvaluator
 from model_openness_tool.catalog import load_catalog
 from model_openness_tool.connectors.github import GitHubConnector, GitHubRestClient
 from model_openness_tool.connectors.huggingface import HuggingFaceConnector, HuggingFaceSdkClient
+from model_openness_tool.connectors.huggingface_dataset import (
+    HuggingFaceDatasetConnector,
+    HuggingFaceDatasetSdkClient,
+)
 from model_openness_tool.evidence import (
     AccessStatus,
     CollectionResult,
+    DatasetCollectionResult,
+    DatasetEvidenceReport,
     GitHubCollectionResult,
     GitHubEvidenceReport,
     LinkedSourceType,
@@ -104,6 +110,42 @@ def collect_github(
     """Collect a revision-pinned GitHub repository file manifest."""
     connector = GitHubConnector(GitHubRestClient(token=os.environ.get(token_env)))
     result = connector.collect(repository_url, revision)
+    _emit_json(result, output)
+    if result.access_status != AccessStatus.AVAILABLE:
+        raise typer.Exit(code=2)
+
+
+@app.command("collect-dataset")
+def collect_dataset(
+    dataset_url: Annotated[
+        str,
+        typer.Argument(
+            help="Hugging Face dataset URL, such as https://huggingface.co/datasets/org/data."
+        ),
+    ],
+    revision: Annotated[
+        str | None,
+        typer.Option("--revision", help="Branch, tag, or commit to resolve and pin."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Write JSON to this file."),
+    ] = None,
+    cache_dir: Annotated[
+        Path,
+        typer.Option("--cache-dir", file_okay=False, help="Local Hugging Face cache."),
+    ] = Path(".hf-cache"),
+    token_env: Annotated[
+        str,
+        typer.Option("--token-env", help="Environment variable containing a Hugging Face token."),
+    ] = "HF_TOKEN",
+) -> None:
+    """Collect a revision-pinned dataset manifest and bounded data card."""
+    connector = HuggingFaceDatasetConnector(
+        HuggingFaceDatasetSdkClient(token=os.environ.get(token_env)),
+        cache_dir=cache_dir,
+    )
+    result = connector.collect(dataset_url, revision)
     _emit_json(result, output)
     if result.access_status != AccessStatus.AVAILABLE:
         raise typer.Exit(code=2)
@@ -200,10 +242,27 @@ def evaluate_model(
             help="Maximum linked GitHub repositories to collect.",
         ),
     ] = 3,
+    follow_datasets: Annotated[
+        bool,
+        typer.Option(
+            "--follow-datasets/--no-follow-datasets",
+            help="Collect and merge pinned Hugging Face datasets linked by the model card.",
+        ),
+    ] = False,
+    max_linked_datasets: Annotated[
+        int,
+        typer.Option(
+            "--max-linked-datasets",
+            min=0,
+            max=10,
+            help="Maximum linked Hugging Face datasets to collect.",
+        ),
+    ] = 3,
 ) -> None:
     """Collect evidence and emit a conservative provisional MOF assessment."""
     collection = _connector(cache_dir, os.environ.get(token_env)).collect(model_id, revision)
     linked_github: tuple[GitHubCollectionResult, ...] = ()
+    linked_datasets: tuple[DatasetCollectionResult, ...] = ()
     assessment = None
     if collection.report is not None:
         assessment_report = collection.report
@@ -219,14 +278,32 @@ def evaluate_model(
             linked_github = tuple(
                 github_connector.collect(source.canonical_url) for source in github_sources
             )
-            linked_reports: list[GitHubEvidenceReport] = []
+            linked_reports: list[GitHubEvidenceReport | DatasetEvidenceReport] = []
             for linked_result in linked_github:
                 if linked_result.evidence_report is not None:
                     linked_reports.append(linked_result.evidence_report)
-            assessment_report = merge_evidence_reports(
-                assessment_report,
-                tuple(linked_reports),
+        else:
+            linked_reports = []
+        if follow_datasets:
+            dataset_connector = HuggingFaceDatasetConnector(
+                HuggingFaceDatasetSdkClient(token=os.environ.get(token_env)),
+                cache_dir=cache_dir,
             )
+            dataset_sources = [
+                source
+                for source in collection.report.linked_sources
+                if source.source_type == LinkedSourceType.HUGGINGFACE_DATASET
+            ][:max_linked_datasets]
+            linked_datasets = tuple(
+                dataset_connector.collect(source.canonical_url) for source in dataset_sources
+            )
+            for dataset_result in linked_datasets:
+                if dataset_result.evidence_report is not None:
+                    linked_reports.append(dataset_result.evidence_report)
+        assessment_report = merge_evidence_reports(
+            assessment_report,
+            tuple(linked_reports),
+        )
         root = repository_root or find_repository_root()
         assessment = ProvisionalEvaluator(load_catalog(), _license_registry(root)).assess(
             assessment_report
@@ -234,6 +311,7 @@ def evaluate_model(
     run = EvaluationRun(
         collection=collection,
         linked_github=linked_github,
+        linked_datasets=linked_datasets,
         assessment=assessment,
     )
     _emit_json(run, output)

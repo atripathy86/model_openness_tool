@@ -1,5 +1,6 @@
 from model_openness_tool.evidence import LinkedSourceType, TextArtifact
 from model_openness_tool.links import (
+    dataset_sources_from_ids,
     extract_linked_sources,
     normalize_github_repository,
     normalize_linked_source,
@@ -73,3 +74,13 @@ def test_generic_pdf_is_recorded_as_paper() -> None:
 
     assert source is not None
     assert source.source_type == LinkedSourceType.PAPER
+
+
+def test_structured_dataset_ids_become_linked_sources() -> None:
+    sources = dataset_sources_from_ids(
+        ("openai/gsm8k", "openai/gsm8k", "legacy-dataset"),
+        discovered_in="README.md#metadata.datasets",
+    )
+
+    assert [source.identifier for source in sources] == ["legacy-dataset", "openai/gsm8k"]
+    assert sources[1].canonical_url == "https://huggingface.co/datasets/openai/gsm8k"

@@ -91,6 +91,27 @@ def normalize_github_repository(url: str) -> LinkedSource | None:
     return source
 
 
+def dataset_sources_from_ids(
+    dataset_ids: tuple[str, ...],
+    *,
+    discovered_in: str,
+) -> tuple[LinkedSource, ...]:
+    sources = {}
+    for dataset_id in dataset_ids:
+        identifier = dataset_id.strip().strip("/")
+        if not identifier or identifier.startswith("http://") or identifier.startswith("https://"):
+            continue
+        source = LinkedSource(
+            source_type=LinkedSourceType.HUGGINGFACE_DATASET,
+            identifier=identifier,
+            canonical_url=f"https://huggingface.co/datasets/{identifier}",
+            discovered_in=discovered_in,
+            confidence=0.95,
+        )
+        sources[identifier.casefold()] = source
+    return tuple(sorted(sources.values(), key=lambda item: item.identifier))
+
+
 def _github_source(parts: list[str], discovered_in: str) -> LinkedSource | None:
     if len(parts) < 2 or parts[0].casefold() in GITHUB_RESERVED_OWNERS:
         return None

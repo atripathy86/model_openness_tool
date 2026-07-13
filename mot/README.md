@@ -33,12 +33,57 @@ port of the existing MOT evaluator) plus a growing set of evidence collectors, t
 first of which was the Hugging Face collector. It loads the versioned MOF component
 catalog, reads the existing MOT license sources, and evaluates existing MOT YAML.
 
+## Architecture
+
+The evaluator is a single Python package (`src/model_openness_tool/`) with a Typer
+CLI as the primary entry point and an optional FastAPI service for durable operation.
+Data flows one way, from collection to export:
+
+```
+  collect                evaluate = collect + assess         review                export
+┌─────────────┐        ┌───────────────────────────┐   ┌────────────────┐   ┌───────────────┐
+│ connectors  │──JSON──▶ detectors + assessment +  │───▶ SQLite review  │───▶ MOT YAML      │
+│ HF, GitHub, │evidence│ scoring (confirmed vs     │   │ queue (human   │   │ (accepted     │
+│ dataset,    │        │ potential score)          │   │ accept/reject) │   │ claims only)  │
+│ paper, PDF, │        └───────────────────────────┘   └────────────────┘   └───────────────┘
+│ doc         │              ▲ optional, review-only proposals
+└─────────────┘        ┌───────────────────────────┐
+                       │ LLM extraction sidecar    │
+                       └───────────────────────────┘
+```
+
+The major components, and where they live in the source tree:
+
+- **CLI** (`cli.py`) — the Typer app behind the `mot` executable; every workflow in
+  the [CLI reference](docs/CLI.md) is a subcommand here.
+- **Evidence collectors** (`connectors/`) — one module per source: `huggingface.py`,
+  `huggingface_dataset.py`, `github.py`, `arxiv.py`, `doi.py`, `pdf.py`, and
+  `documentation.py`. Each produces a revision-pinned, bounded JSON snapshot
+  (contracts in `evidence.py`); `links.py` normalizes links discovered in model
+  cards, and the deterministic `*_detectors.py` modules map raw snapshots to MOF
+  component evidence.
+- **Scoring engine** (`scoring.py`) — a deterministic port of the Drupal
+  `ModelEvaluator`, kept parity-compatible with the existing MOT site. It draws on
+  `catalog.py` (versioned MOF catalog, `catalogs/mof-1.0.yaml`), `licenses.py`
+  (license openness decisions), `model_yaml.py` (existing MOT YAML input), and the
+  shared typed models in `domain.py`. `assessment.py` maps unreviewed evidence to
+  the conservative confirmed/potential assessment.
+- **LLM extraction sidecar** (`llm_extraction.py`, `llm_evaluation.py`) — optional,
+  provider-neutral, schema-validated proposals from an OpenAI-compatible endpoint;
+  its output is review-only and never affects a score directly.
+- **Review queue** (`review_store.py`) — a local SQLite queue with an append-only
+  decision audit; `mot_export.py` turns accepted claims into MOT-schema YAML.
+- **Service mode** (`api.py`, `jobs.py`, `persistence.py`) — the FastAPI service and
+  the PostgreSQL-backed durable job queue and worker loop.
+
 ## Install the CLI
 
 Requirements: Python 3.12+ and [`uv`](https://docs.astral.sh/uv/). A basic
 public-model evaluation needs no optional services and no `.env` file; Docker
-(PostgreSQL), a MinerU VLM service, and an OpenAI-compatible endpoint are needed only
-for the advanced features described in the [CLI reference](docs/CLI.md).
+(PostgreSQL) and an OpenAI-compatible endpoint are needed only for the advanced
+features described in the [CLI reference](docs/CLI.md), and a MinerU VLM service can
+optionally improve PDF extraction (without one, PDF collection falls back to bounded
+`pypdf` extraction).
 
 Install `mot` as an isolated standalone CLI tool (no checkout required):
 
@@ -107,8 +152,9 @@ to commands with `uv run --env-file .env ...`.
 | `GITHUB_TOKEN` | GitHub token for private repositories or higher API limits |
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint for LLM extraction (`extract-llm`, `llm-eval`) |
 | `OPENAI_API_KEY` | Key for that endpoint when authentication is required; optional for unauthenticated local endpoints, never persisted |
-| `MINERU_SERVER_URL` | Externally provided MinerU VLM service for PDF collection (alternative to `--mineru-url`) |
+| `MINERU_SERVER_URL` | Optional external MinerU VLM service for higher-quality PDF extraction (alternative to `--mineru-url`); when unset, PDF collection falls back to bounded `pypdf` extraction |
 | `MOT_API_BEARER_TOKEN` | API bearer authentication; blank or unset disables it |
+| `MOT_API_PORT` | Host port for the Docker Compose `api` service (default `8000`) |
 | `MOT_LOG_LEVEL` | Verbosity of JSON worker/service logs (default `INFO`) |
 | `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_PORT` | PostgreSQL container settings for `docker compose` |
 | `DATABASE_URL` | SQLAlchemy connection URL used by migrations, the API service, and workers |
@@ -248,8 +294,8 @@ The [CLI reference](docs/CLI.md) documents every command, option, limit, and cav
   line-cited evidence proposals from an OpenAI-compatible endpoint (`extract-llm`) and
   the gated extraction evaluation (`llm-eval`).
 - [API service and durable jobs](docs/CLI.md#api-service-and-durable-jobs) — the
-  FastAPI service, PostgreSQL migrations, the durable job queue and worker loop, and
-  the job HTTP API.
+  FastAPI service (run via Docker Compose or on the host), PostgreSQL migrations,
+  the endpoint table, the durable job queue and worker loop, and the job HTTP API.
 
 ## Development setup
 

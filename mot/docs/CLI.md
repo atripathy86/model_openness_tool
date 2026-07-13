@@ -130,8 +130,10 @@ uv run mot collect-pdf \
 PDF collection accepts at most 10 MB, sends at most the first 100 pages through the
 uv-installed MinerU `vlm-http-client`, retains at most 500,000 Markdown characters,
 validates source redirects, and blocks local or non-public literal source addresses.
-Set `MINERU_SERVER_URL` instead of `--mineru-url` when preferred. The VLM service is
-externally provided and MOT does not launch or download it.
+Set `MINERU_SERVER_URL` instead of `--mineru-url` when preferred; when neither is
+set, the connector tries `http://127.0.0.1:30000`. The VLM service is optional and
+externally provided — MOT does not launch or download it, and an absent or
+unreachable server triggers the `pypdf` fallback below rather than a failure.
 
 When MinerU or its VLM service is unavailable, collection falls back to bounded
 `pypdf` text extraction. The snapshot records `pypdf-fallback` and includes the MinerU
@@ -360,6 +362,10 @@ review database and evaluation report.
 Prefect is intentionally deferred; durable jobs and the worker loop use the PostgreSQL
 service boundary, and Prefect is not required.
 
+Note: this Python service is distinct from the Drupal site's REST API documented in
+the repository root [`API.md`](../../API.md) (`/api/v1/models` and related routes on
+mot.isitopen.ai).
+
 ### Start PostgreSQL and apply migrations
 
 ```bash
@@ -368,17 +374,77 @@ docker compose --env-file .env up -d postgres
 uv run --env-file .env alembic upgrade head
 ```
 
-### Start the FastAPI service
+### Run the service with Docker Compose
+
+The compose file also defines an `api` service built from the minimal
+[`Dockerfile`](../Dockerfile). It waits for the PostgreSQL healthcheck, applies
+Alembic migrations, then starts uvicorn:
+
+```bash
+cp example.env .env
+docker compose --env-file .env up -d --build
+curl http://127.0.0.1:8000/health
+```
+
+Notes:
+
+- The container reaches the database at the `postgres` service hostname; the
+  compose file sets `DATABASE_URL` accordingly, overriding the host-oriented
+  `127.0.0.1` URL in `example.env` (which remains correct for host-run commands).
+- The published port is configurable via `MOT_API_PORT` (default `8000`).
+- The image contains only what the API and migrations need (FastAPI, uvicorn,
+  Pydantic, SQLAlchemy, psycopg, Alembic, PyYAML). **MinerU is optional and
+  deliberately not installed**: it is an externally provided inference service that
+  MOT reaches over HTTP, and when `MINERU_SERVER_URL` is unset or unreachable, PDF
+  collection automatically falls back to bounded `pypdf` extraction instead of
+  failing. For higher-quality extraction, point `MINERU_SERVER_URL` at an external
+  server — e.g. `http://host.docker.internal:30000` for a host-run server, or add a
+  MinerU container to the compose network and point at it (e.g.
+  `http://mineru:30000`).
+- Evidence collection and workers (`mot worker`) need the full dependency set and
+  run outside this image — e.g. from the local uv environment, with `DATABASE_URL`
+  pointing at the published port (`127.0.0.1:5432`, as in `example.env`).
+
+### Start the FastAPI service on the host
+
+Alternatively, with PostgreSQL up and migrations applied (previous sections):
 
 ```bash
 uv run --env-file .env uvicorn model_openness_tool.api:app_factory --factory
 ```
+
+The service listens on uvicorn's default `127.0.0.1:8000`; pass `--host` and
+`--port` to change it.
 
 `/health` reports process health without requiring PostgreSQL. `/ready` reports ready
 only when `DATABASE_URL` is configured and the database probe succeeds. Versioned
 routes are unauthenticated when `MOT_API_BEARER_TOKEN` is unset or blank. When
 configured, callers must send that value as a bearer token. Health and readiness
 remain public.
+
+### Endpoints
+
+| Method | Path | What it does | Auth |
+| --- | --- | --- | --- |
+| GET | `/health` | Process health; works without PostgreSQL | None (always public) |
+| GET | `/ready` | Ready only when `DATABASE_URL` is configured and the database probe succeeds | None (always public) |
+| GET | `/v1/catalog` | Returns the loaded MOF framework catalog (version and hash) | Bearer, when configured |
+| POST | `/v1/jobs` | Submit a durable evaluation job | Bearer, when configured |
+| GET | `/v1/jobs` | List jobs; returns an opaque `next_cursor` for stable pagination | Bearer, when configured |
+| GET | `/v1/jobs/{job_id}` | Fetch one job's current state | Bearer, when configured |
+| POST | `/v1/jobs/{job_id}/retry` | Requeue a terminally failed job with one additional attempt | Bearer, when configured |
+| GET | `/docs`, `/redoc`, `/openapi.json` | FastAPI's built-in interactive documentation and machine-readable schema | None |
+
+"Bearer, when configured" routes are unauthenticated while `MOT_API_BEARER_TOKEN` is
+unset or blank; once it is set, callers must send it as a bearer token.
+
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/ready
+# Versioned routes require the bearer token when MOT_API_BEARER_TOKEN is set
+curl -H "Authorization: Bearer $MOT_API_BEARER_TOKEN" \
+  http://127.0.0.1:8000/v1/catalog
+```
 
 ### Durable evaluation jobs
 

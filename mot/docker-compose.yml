@@ -15,5 +15,27 @@ services:
     volumes:
       - mot-postgres:/var/lib/postgresql/data
 
+  api:
+    build: .
+    environment:
+      # Inside the compose network the database is reached by service name,
+      # not the host-oriented 127.0.0.1 URL from example.env.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mot}:${POSTGRES_PASSWORD:-mot-local}@postgres:5432/${POSTGRES_DB:-mot}
+      MOT_API_BEARER_TOKEN: ${MOT_API_BEARER_TOKEN:-}
+      MOT_LOG_LEVEL: ${MOT_LOG_LEVEL:-INFO}
+      # MinerU is optional and not part of this image or stack. When unset or
+      # unreachable, PDF collection automatically falls back to bounded pypdf
+      # extraction instead of failing. For higher-quality extraction, point
+      # this at an external MinerU server — e.g. http://host.docker.internal:30000
+      # for a host-run server, or http://mineru:30000 for a container you add
+      # to this network. The API process itself never calls MinerU; the value
+      # is passed through for consistency with example.env.
+      MINERU_SERVER_URL: ${MINERU_SERVER_URL:-}
+    ports:
+      - "${MOT_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   mot-postgres:

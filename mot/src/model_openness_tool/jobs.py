@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import uuid
+from base64 import urlsafe_b64decode, urlsafe_b64encode
+from binascii import Error as Base64Error
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import JSON, DateTime, Index, Integer, String, Text, select
+from sqlalchemy import JSON, DateTime, Index, Integer, String, Text, and_, or_, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from model_openness_tool.persistence import Base, Database
@@ -100,6 +102,13 @@ class RecoveryResult(BaseModel):
     failed_count: int = Field(ge=0)
 
 
+class EvaluationJobPage(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: tuple[EvaluationJob, ...]
+    next_cursor: str | None = None
+
+
 class JobQueue:
     def __init__(
         self,
@@ -136,12 +145,45 @@ class JobQueue:
     def list(
         self, status: JobStatus | None = None, *, limit: int = 100
     ) -> tuple[EvaluationJob, ...]:
-        query = select(EvaluationJobRow).order_by(EvaluationJobRow.created_at.desc()).limit(limit)
+        return self.list_page(status, limit=limit).items
+
+    def list_page(
+        self,
+        status: JobStatus | None = None,
+        *,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> EvaluationJobPage:
+        if limit < 1:
+            raise ValueError("Page limit must be positive")
+        query = select(EvaluationJobRow).order_by(
+            EvaluationJobRow.created_at.desc(), EvaluationJobRow.job_id.desc()
+        )
         if status is not None:
             query = query.where(EvaluationJobRow.status == status.value)
+        if cursor is not None:
+            created_at, job_id = _decode_cursor(cursor)
+            query = query.where(
+                or_(
+                    EvaluationJobRow.created_at < created_at,
+                    and_(
+                        EvaluationJobRow.created_at == created_at,
+                        EvaluationJobRow.job_id < job_id,
+                    ),
+                )
+            )
         with self._database.session() as session:
-            rows = session.scalars(query).all()
-            return tuple(_job(row) for row in rows)
+            rows = session.scalars(query.limit(limit + 1)).all()
+            page_rows = rows[:limit]
+            next_cursor = (
+                _encode_cursor(page_rows[-1].created_at, page_rows[-1].job_id)
+                if len(rows) > limit
+                else None
+            )
+            return EvaluationJobPage(
+                items=tuple(_job(row) for row in page_rows),
+                next_cursor=next_cursor,
+            )
 
     def claim(self, worker_id: str) -> EvaluationJob | None:
         worker_id = worker_id.strip()
@@ -244,6 +286,25 @@ class JobQueue:
             session.flush()
             return _job(row)
 
+    def retry(self, job_id: str) -> EvaluationJob:
+        now = self._clock()
+        with self._database.session() as session:
+            row = session.get(EvaluationJobRow, job_id, with_for_update=True)
+            if row is None:
+                raise ValueError(f"Unknown job ID: {job_id}")
+            if row.status != JobStatus.FAILED.value:
+                raise ValueError(f"Only failed jobs can be retried: {job_id}")
+            row.status = JobStatus.QUEUED.value
+            row.max_attempts += 1
+            row.available_at = now
+            row.locked_at = None
+            row.worker_id = None
+            row.error = None
+            row.result_json = None
+            row.updated_at = now
+            session.flush()
+            return _job(row)
+
 
 def _running_job(session: Session, job_id: str) -> EvaluationJobRow:
     row = session.get(EvaluationJobRow, job_id, with_for_update=True)
@@ -256,6 +317,25 @@ def _running_job(session: Session, job_id: str) -> EvaluationJobRow:
 
 def _retry_delay(attempt: int) -> timedelta:
     return timedelta(seconds=min(300, 30 * (2 ** max(0, attempt - 1))))
+
+
+def _encode_cursor(created_at: datetime, job_id: str) -> str:
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    value = f"{created_at.isoformat()}\n{job_id}".encode()
+    return urlsafe_b64encode(value).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, str]:
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        created_at_value, job_id = urlsafe_b64decode(cursor + padding).decode().split("\n", 1)
+        created_at = datetime.fromisoformat(created_at_value)
+        if created_at.tzinfo is None or not job_id:
+            raise ValueError
+    except (Base64Error, UnicodeDecodeError, ValueError) as error:
+        raise ValueError("Invalid job page cursor") from error
+    return created_at, job_id
 
 
 def _job(row: EvaluationJobRow) -> EvaluationJob:

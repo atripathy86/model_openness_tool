@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from model_openness_tool.api import ApiSettings, create_app
+from model_openness_tool.jobs import EvaluationJobRequest, JobQueue
 from model_openness_tool.persistence import Base, Database
 
 
@@ -66,13 +67,47 @@ def test_job_submission_and_status_routes_use_durable_database(tmp_path: Path) -
     app = create_app(ApiSettings(database_url="configured"), database=database)
 
     with TestClient(app) as client:
+        first = client.post("/v1/jobs", json={"model_id": "example/first"})
         submitted = client.post("/v1/jobs", json={"model_id": "example/model"})
         job_id = submitted.json()["job_id"]
         fetched = client.get(f"/v1/jobs/{job_id}")
-        listed = client.get("/v1/jobs", params={"job_status": "queued"})
+        listed = client.get("/v1/jobs", params={"job_status": "queued", "limit": 1})
+        next_page = client.get(
+            "/v1/jobs",
+            params={"job_status": "queued", "limit": 1, "cursor": listed.json()["next_cursor"]},
+        )
+        invalid_cursor = client.get("/v1/jobs", params={"cursor": "invalid"})
 
+    assert first.status_code == 201
     assert submitted.status_code == 201
     assert submitted.json()["status"] == "queued"
     assert fetched.status_code == 200
     assert fetched.json()["job_id"] == job_id
     assert [item["job_id"] for item in listed.json()["items"]] == [job_id]
+    assert listed.json()["next_cursor"] is not None
+    assert [item["job_id"] for item in next_page.json()["items"]] == [first.json()["job_id"]]
+    assert next_page.json()["next_cursor"] is None
+    assert invalid_cursor.status_code == 422
+
+
+def test_manual_retry_route_only_accepts_failed_jobs(tmp_path: Path) -> None:
+    database = Database(f"sqlite+pysqlite:///{tmp_path / 'api.db'}")
+    Base.metadata.create_all(database.engine)
+    queue = JobQueue(database)
+    failed = queue.submit(EvaluationJobRequest(model_id="example/model", max_attempts=1))
+    claimed = queue.claim("worker")
+    assert claimed is not None
+    queue.fail(failed.job_id, "failed")
+    queued = queue.submit(EvaluationJobRequest(model_id="example/queued"))
+    app = create_app(ApiSettings(database_url="configured"), database=database)
+
+    with TestClient(app) as client:
+        retried = client.post(f"/v1/jobs/{failed.job_id}/retry")
+        conflict = client.post(f"/v1/jobs/{queued.job_id}/retry")
+        missing = client.post("/v1/jobs/missing/retry")
+
+    assert retried.status_code == 200
+    assert retried.json()["status"] == "queued"
+    assert retried.json()["max_attempts"] == 2
+    assert conflict.status_code == 409
+    assert missing.status_code == 404

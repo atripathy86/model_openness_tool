@@ -120,3 +120,47 @@ def test_stale_recovery_fails_job_with_exhausted_attempts(tmp_path: Path) -> Non
     with pytest.raises(ValueError, match="positive"):
         queue.recover_stale(timedelta(0))
     database.dispose()
+
+
+def test_failed_job_can_be_requeued_with_one_additional_attempt(tmp_path: Path) -> None:
+    database = _database(tmp_path / "jobs.db")
+    queue = JobQueue(database, job_id_factory=lambda: "job-1")
+    queue.submit(EvaluationJobRequest(model_id="example/model", max_attempts=1))
+    claimed = queue.claim("worker")
+    assert claimed is not None
+    failed = queue.fail(claimed.job_id, "permanent failure")
+
+    retried = queue.retry(failed.job_id)
+
+    assert retried.status == JobStatus.QUEUED
+    assert retried.attempts == 1
+    assert retried.max_attempts == 2
+    assert retried.error is None
+    assert retried.worker_id is None
+    with pytest.raises(ValueError, match="Only failed jobs"):
+        queue.retry(retried.job_id)
+    with pytest.raises(ValueError, match="Unknown job ID"):
+        queue.retry("missing")
+    database.dispose()
+
+
+def test_job_pages_use_stable_opaque_cursor(tmp_path: Path) -> None:
+    now = datetime(2026, 7, 12, tzinfo=UTC)
+    ids = iter(("job-1", "job-2", "job-3"))
+    database = _database(tmp_path / "jobs.db")
+    queue = JobQueue(database, clock=lambda: now, job_id_factory=lambda: next(ids))
+    for model_id in ("example/one", "example/two", "example/three"):
+        queue.submit(EvaluationJobRequest(model_id=model_id))
+
+    first = queue.list_page(limit=2)
+    second = queue.list_page(limit=2, cursor=first.next_cursor)
+
+    assert [job.job_id for job in first.items] == ["job-3", "job-2"]
+    assert first.next_cursor is not None
+    assert [job.job_id for job in second.items] == ["job-1"]
+    assert second.next_cursor is None
+    with pytest.raises(ValueError, match="Invalid job page cursor"):
+        queue.list_page(cursor="not-a-cursor")
+    with pytest.raises(ValueError, match="positive"):
+        queue.list_page(limit=0)
+    database.dispose()

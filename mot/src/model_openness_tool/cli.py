@@ -490,6 +490,22 @@ def job_list(
         database.dispose()
 
 
+@app.command("job-retry")
+def job_retry(
+    job_id: Annotated[str, typer.Argument(help="Terminally failed evaluation job ID.")],
+) -> None:
+    """Requeue a failed job with one additional attempt."""
+    database = Database(_required_environment("DATABASE_URL"))
+    try:
+        try:
+            job = JobQueue(database).retry(job_id)
+        except ValueError as error:
+            raise typer.BadParameter(str(error)) from error
+        typer.echo(job.model_dump_json(indent=2))
+    finally:
+        database.dispose()
+
+
 @app.command("worker")
 def run_worker(
     once: Annotated[

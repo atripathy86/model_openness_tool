@@ -241,4 +241,13 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
   uv run --env-file .env mot job-recover --stale-seconds 3600
 ```
 
-The API also exposes `POST /v1/jobs`, `GET /v1/jobs`, and `GET /v1/jobs/{job_id}` under the same optional bearer-authentication boundary. Workers claim queued jobs with PostgreSQL `FOR UPDATE SKIP LOCKED`, record attempts and worker identity, refresh a running-job heartbeat, and retry unexpected failures with bounded exponential delays before terminal failure. Worker lifecycle events are emitted as JSON logs to standard error; set `MOT_LOG_LEVEL` to control verbosity. Each worker performs stale-job recovery at startup, and operators can run `mot job-recover` independently. Use `mot worker --loop` for continuous polling. Prefect is not required.
+Manually requeue a terminally failed job with one additional allowed attempt:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run --env-file .env mot job-retry <job-id>
+```
+
+The API also exposes `POST /v1/jobs`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, and `POST /v1/jobs/{job_id}/retry` under the same optional bearer-authentication boundary. Job listings return an opaque `next_cursor`; pass it back as the `cursor` query parameter to fetch the next stable page. Manual retry is limited to terminally failed jobs, preserves the job ID and attempt count, and grants exactly one additional attempt.
+
+Workers claim queued jobs with PostgreSQL `FOR UPDATE SKIP LOCKED`, record attempts and worker identity, refresh a running-job heartbeat, and retry unexpected failures with bounded exponential delays before terminal failure. Worker lifecycle events are emitted as JSON logs to standard error; set `MOT_LOG_LEVEL` to control verbosity. Each worker performs stale-job recovery at startup, and operators can run `mot job-recover` independently. Use `mot worker --loop` for continuous polling. Prefect is not required.

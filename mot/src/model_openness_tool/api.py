@@ -57,6 +57,7 @@ class JobListResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     items: tuple[EvaluationJobSummary, ...]
+    next_cursor: str | None = None
 
 
 def create_app(
@@ -149,11 +150,17 @@ def create_app(
     def list_jobs(
         job_status: JobStatus | None = None,
         limit: int = 100,
+        cursor: str | None = None,
     ) -> JobListResponse:
         if limit < 1 or limit > 500:
             raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+        try:
+            page = jobs().list_page(job_status, limit=limit, cursor=cursor)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         return JobListResponse(
-            items=tuple(summarize_job(job) for job in jobs().list(job_status, limit=limit))
+            items=tuple(summarize_job(job) for job in page.items),
+            next_cursor=page.next_cursor,
         )
 
     @app.get(
@@ -166,6 +173,20 @@ def create_app(
         if job is None:
             raise HTTPException(status_code=404, detail="Evaluation job was not found")
         return job
+
+    @app.post(
+        "/v1/jobs/{job_id}/retry",
+        response_model=EvaluationJob,
+        dependencies=[Depends(authorize)],
+    )
+    def retry_job(job_id: str) -> EvaluationJob:
+        queue = jobs()
+        if queue.get(job_id) is None:
+            raise HTTPException(status_code=404, detail="Evaluation job was not found")
+        try:
+            return queue.retry(job_id)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     return app
 

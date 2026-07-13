@@ -269,3 +269,31 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 ```
 
 `export-mot-yaml` considers only accepted evidence imported from that exact evaluation snapshot. Accepted `artifact_mentioned` claims never create components. An accepted `artifact_exists` claim creates a component; without an accepted component-scoped `license_declared` claim, the component is explicitly exported as `unlicensed`. Conflicting accepted component licenses stop export for review. Existing output files are never overwritten. The YAML remains deliberately limited to the existing MOT schema; evidence, reviewer identity, rationale, and audit timestamps stay in the review database and evaluation report.
+
+An Agent Skills specification-compatible workflow is available at `../skill/mot`. Install only the `mot` skill from this repository into Codex, Claude Code, GitHub Copilot CLI, or another client supported by the `skills` installer:
+
+```bash
+npx skills add https://github.com/atripathy86/model_openness_tool --skill mot
+```
+
+The skill is a self-contained operating guide that installs the MOT CLI from this fork with `uv tool install` when authorized, or uses a user-supplied MOT checkout. It verifies the installed version and catalog, creates a user-selected workspace, explains optional `.env` configuration, asks for evaluation scope and source limits, runs the CLI in a safe sequence, interprets cumulative MOF Class III/II/I requirements, and guides human review and YAML export. It does not modify MOT source code or bundle credentials and services.
+
+The skill's default CLI setup sequence is:
+
+```bash
+uv tool install \
+  "git+https://github.com/atripathy86/model_openness_tool.git@main#subdirectory=mot"
+mot version
+mot catalog
+```
+
+It also documents SSH installation, commit-pinned installation, upgrades, PATH discovery, and checkout-based execution.
+
+Validate it locally with:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python UV_TOOL_DIR=.uv-tools \
+  uvx --from skills-ref agentskills validate ../skill/mot
+```
+
+The repository does not vendor the validator. The official package is named `skills-ref`; its current CLI executable is `agentskills`.

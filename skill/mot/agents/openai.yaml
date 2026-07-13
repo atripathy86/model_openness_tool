@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model Openness Tool"
+  short_description: "Install and operate the MOT CLI"
+  default_prompt: "Use $mot to install MOT from its current fork if needed, evaluate a Hugging Face model, and explain its MOF class gaps."

@@ -521,7 +521,7 @@ A reviewer must be able to accept, reject, or replace a proposed decision, cite 
 - Make the skill invoke the `mot` CLI for collection, evaluation, reports, review, export, and parity comparison rather than reimplementing those behaviors in prompts or scripts.
 - Include environment/preflight guidance, safe defaults, interpretation of provisional versus verified results, and handling for gated or review-required cases.
 - Add focused references only when needed for command/output schemas; do not add a skill README or duplicate package documentation.
-- Validate with the skill-creator `quick_validate.py` and the official `skills-ref validate ./skill/mot` validator.
+- Validate with the skill-creator `quick_validate.py` and the official `skills-ref` package (`agentskills validate ./skill/mot` in its current CLI).
 - Forward-test representative prompts against the actual CLI before considering the skill complete.
 
 **Exit:** an Agent Skills-compliant `mot` skill reliably drives the released CLI and passes both validators and representative forward tests.
@@ -668,5 +668,5 @@ As of 2026-07-12:
 - Workers now refresh running-job heartbeat leases, recover stale work at startup, emit structured JSON lifecycle logs, and expose explicit recovery through `mot job-recover`.
 - Terminally failed jobs can now be manually requeued with one additional attempt through the CLI or API, and API job listings use stable opaque cursor pagination.
 - Deterministic and linked run evidence can now enter the append-only review queue, and `mot export-mot-yaml` emits only reviewer-accepted artifact claims with conservative component-scoped licensing into the existing MOT schema.
-- The `skill/mot` Agent Skill is the final minimal-path deliverable. Retention, metrics, and broader batch submission are deferred until operational demand justifies them.
-- The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.
+- The installable `skill/mot` Agent Skill now provides fork-based isolated uv tool installation and upgrades, a user-owned workspace/configuration workflow, option-selection sequence, cumulative MOF Class III/II/I interpretation, review/export safeguards, and durable-job reference without instructing agents to modify MOT source code.
+- The recommended minimal delivery path is complete. Retention, metrics, broader batch submission, and additional review/API depth are deferred until operational demand justifies them.

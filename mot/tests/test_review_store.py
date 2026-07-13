@@ -119,3 +119,8 @@ def test_decision_requires_existing_evidence_and_audit_fields(tmp_path: Path) ->
             reviewer="reviewer",
             reason="reason",
         )
+    with pytest.raises(ValueError, match="source ID"):
+        store.import_evidence(" ", ())
+    unscoped = _report().evidence[0].model_copy(update={"component_id": None})
+    with pytest.raises(ValueError, match="scoped to a component"):
+        store.import_evidence("run", (unscoped,))

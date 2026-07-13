@@ -251,3 +251,21 @@ UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
 The API also exposes `POST /v1/jobs`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, and `POST /v1/jobs/{job_id}/retry` under the same optional bearer-authentication boundary. Job listings return an opaque `next_cursor`; pass it back as the `cursor` query parameter to fetch the next stable page. Manual retry is limited to terminally failed jobs, preserves the job ID and attempt count, and grants exactly one additional attempt.
 
 Workers claim queued jobs with PostgreSQL `FOR UPDATE SKIP LOCKED`, record attempts and worker identity, refresh a running-job heartbeat, and retry unexpected failures with bounded exponential delays before terminal failure. Worker lifecycle events are emitted as JSON logs to standard error; set `MOT_LOG_LEVEL` to control verbosity. Each worker performs stale-job recovery at startup, and operators can run `mot job-recover` independently. Use `mot worker --loop` for continuous polling. Prefect is not required.
+
+Import the deterministic evidence from a saved evaluation run into the append-only review queue, record decisions, and export only accepted artifact claims:
+
+```bash
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot review-import-run gpt2-evaluation.json --database .mot/gpt2-review.db
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot review-list --database .mot/gpt2-review.db --status pending
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot review-decide <evidence-id> --decision accept \
+  --reviewer <reviewer-id> --reason "Verified against the pinned source." \
+  --database .mot/gpt2-review.db
+UV_CACHE_DIR=.uv-cache UV_PYTHON_INSTALL_DIR=.uv-python \
+  uv run mot export-mot-yaml gpt2-evaluation.json \
+  --database .mot/gpt2-review.db --output gpt2-reviewed.yml
+```
+
+`export-mot-yaml` considers only accepted evidence imported from that exact evaluation snapshot. Accepted `artifact_mentioned` claims never create components. An accepted `artifact_exists` claim creates a component; without an accepted component-scoped `license_declared` claim, the component is explicitly exported as `unlicensed`. Conflicting accepted component licenses stop export for review. Existing output files are never overwritten. The YAML remains deliberately limited to the existing MOT schema; evidence, reviewer identity, rationale, and audit timestamps stay in the review database and evaluation report.

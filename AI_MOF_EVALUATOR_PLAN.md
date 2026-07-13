@@ -667,5 +667,6 @@ As of 2026-07-12:
 - Durable PostgreSQL evaluation jobs now support API/CLI submission and status, transactional `FOR UPDATE SKIP LOCKED` claims, bounded exponential retries, worker identity, structured results/errors, and one-shot or continuous workers without Prefect.
 - Workers now refresh running-job heartbeat leases, recover stale work at startup, emit structured JSON lifecycle logs, and expose explicit recovery through `mot job-recover`.
 - Terminally failed jobs can now be manually requeued with one additional attempt through the CLI or API, and API job listings use stable opaque cursor pagination.
-- Reviewed MOT YAML export and the `skill/mot` Agent Skill are the minimal remaining delivery path. Retention, metrics, and broader batch submission are deferred until operational demand justifies them.
+- Deterministic and linked run evidence can now enter the append-only review queue, and `mot export-mot-yaml` emits only reviewer-accepted artifact claims with conservative component-scoped licensing into the existing MOT schema.
+- The `skill/mot` Agent Skill is the final minimal-path deliverable. Retention, metrics, and broader batch submission are deferred until operational demand justifies them.
 - The `skill/mot` Agent Skill remains intentionally deferred until the CLI contract is stable.

@@ -62,6 +62,12 @@ from model_openness_tool.llm_extraction import (
 )
 from model_openness_tool.logging_config import configure_json_logging
 from model_openness_tool.model_yaml import load_model_yaml
+from model_openness_tool.mot_export import (
+    evaluation_review_source_id,
+    export_reviewed_mot_yaml,
+    load_evaluation_run,
+    reviewable_evaluation_evidence,
+)
 from model_openness_tool.persistence import Database
 from model_openness_tool.review_store import (
     ReviewDecision,
@@ -386,6 +392,29 @@ def review_import(
     typer.echo(result.model_dump_json(indent=2))
 
 
+@app.command("review-import-run")
+def review_import_run(
+    evaluation_file: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    database: Annotated[
+        Path,
+        typer.Option("--database", dir_okay=False, help="Local SQLite review database."),
+    ] = Path(".mot/review.db"),
+) -> None:
+    """Import deterministic and linked evidence from an evaluation run for review."""
+    try:
+        run = load_evaluation_run(evaluation_file)
+        source_id = evaluation_review_source_id(run)
+        result = ReviewStore(database).import_evidence(
+            source_id, reviewable_evaluation_evidence(run)
+        )
+    except (OSError, ValueError, ValidationError) as error:
+        raise typer.BadParameter(f"Invalid evaluation run: {error}") from error
+    typer.echo(result.model_dump_json(indent=2))
+
+
 @app.command("review-list")
 def review_list(
     database: Annotated[
@@ -436,6 +465,35 @@ def review_decide(
     except ValueError as error:
         raise typer.BadParameter(str(error)) from error
     typer.echo(event.model_dump_json(indent=2))
+
+
+@app.command("export-mot-yaml")
+def export_mot_yaml(
+    evaluation_file: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, resolve_path=True),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("--output", "-o", dir_okay=False, help="MOT-compatible YAML output."),
+    ],
+    database: Annotated[
+        Path,
+        typer.Option("--database", dir_okay=False, help="Local SQLite review database."),
+    ] = Path(".mot/review.db"),
+) -> None:
+    """Export only reviewer-accepted artifact evidence as MOT YAML."""
+    try:
+        result = export_reviewed_mot_yaml(
+            load_evaluation_run(evaluation_file),
+            load_catalog(),
+            ReviewStore(database),
+            output,
+        )
+        load_model_yaml(output, load_catalog())
+    except (OSError, ValueError, ValidationError) as error:
+        raise typer.BadParameter(f"Unable to export reviewed MOT YAML: {error}") from error
+    typer.echo(result.model_dump_json(indent=2))
 
 
 @app.command("job-submit")

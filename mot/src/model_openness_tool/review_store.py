@@ -131,11 +131,21 @@ class ReviewStore:
             )
 
     def import_report(self, report: LlmExtractionReport) -> ReviewImportResult:
+        return self.import_evidence(report.extraction_id, report.evidence)
+
+    def import_evidence(
+        self, source_id: str, evidence_items: tuple[EvidenceItem, ...]
+    ) -> ReviewImportResult:
+        source_id = source_id.strip()
+        if not source_id:
+            raise ValueError("Review source ID must not be empty")
+        if any(item.component_id is None for item in evidence_items):
+            raise ValueError("Review evidence must be scoped to a component")
         self.initialize()
         queued_at = self._clock().isoformat()
         imported = 0
         with self._connect() as connection:
-            for evidence in report.evidence:
+            for evidence in evidence_items:
                 cursor = connection.execute(
                     """
                     INSERT OR IGNORE INTO review_items(
@@ -144,16 +154,16 @@ class ReviewStore:
                     """,
                     (
                         evidence.evidence_id,
-                        report.extraction_id,
+                        source_id,
                         evidence.component_id,
                         evidence.model_dump_json(),
                         queued_at,
                     ),
                 )
                 imported += cursor.rowcount
-        proposed = len(report.evidence)
+        proposed = len(evidence_items)
         return ReviewImportResult(
-            extraction_id=report.extraction_id,
+            extraction_id=source_id,
             proposed_count=proposed,
             imported_count=imported,
             existing_count=proposed - imported,
